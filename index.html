@@ -144,6 +144,13 @@
         <!-- 날짜 그리드 -->
         <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-center sm:gap-2"></div>
 
+        <section class="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <h3 class="text-base font-bold text-emerald-200 sm:text-lg">이번 달 수익 합계</h3>
+          <p id="monthlyTotal" class="mt-1 text-2xl font-extrabold text-emerald-300">0 메소</p>
+          <p id="monthlyBreakdown" class="text-sm leading-6 text-slate-300"></p>
+          <div id="monthlyRecordsList" class="mt-3 max-h-80 space-y-2 overflow-y-auto text-sm text-slate-300"></div>
+        </section>
+
         <details class="mt-4 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
           <summary class="cursor-pointer text-sm font-bold text-violet-200"><span id="sundayMapleTitle">이번 주 썬데이 메이플</span><span class="ml-2 text-xs font-normal text-violet-300">이벤트 보기</span></summary>
           <p id="sundayMapleSummary" class="mt-2 text-xs text-slate-300">일정을 불러오는 중...</p>
@@ -151,8 +158,8 @@
           <a id="sundayMapleLink" class="mt-2 inline-block text-xs text-sky-300 underline" href="https://maplestory.nexon.com/News/Event" target="_blank" rel="noopener noreferrer">넥슨 공식 이벤트 공지 보기 ↗</a>
         </details>
 
-        <section class="mt-4 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
-          <h3 id="dailyLogTitle" class="text-base font-bold text-amber-200 sm:text-lg">날짜별 획득 기록</h3>
+        <details id="dailyLogDetails" class="mt-4 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+          <summary class="cursor-pointer list-none text-base font-bold text-amber-200 sm:text-lg"><span id="dailyLogTitle">날짜별 획득 기록</span><span class="ml-2 text-xs font-normal text-slate-400">보스 클리어 · 아이템 · 사냥 메소 보기/입력</span></summary>
           <div class="mt-2 flex items-center justify-between gap-2">
             <label class="text-sm text-slate-300">설정한 주간 보스 클리어</label>
             <label class="flex items-center gap-2 text-sm font-semibold text-emerald-300"><input id="clearAllDailyBosses" type="checkbox" onchange="setAllDailyBossesCleared(this.checked)" class="h-4 w-4 accent-emerald-500" /> 모두 클리어</label>
@@ -176,14 +183,7 @@
             <button id="dailyClearButton" onclick="clearDailyLog()" class="rounded-lg bg-slate-700 px-3 py-2.5 text-sm text-slate-200 hover:bg-slate-600">지우기</button>
           </div>
           <p id="dailyLogStatus" class="mt-2 min-h-5 text-xs text-emerald-300"></p>
-        </section>
-
-        <section class="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
-          <h3 class="text-base font-bold text-emerald-200 sm:text-lg">이번 달 수익 합계</h3>
-          <p id="monthlyTotal" class="mt-1 text-2xl font-extrabold text-emerald-300">0 메소</p>
-          <p id="monthlyBreakdown" class="text-sm leading-6 text-slate-300"></p>
-          <div id="monthlyRecordsList" class="mt-3 max-h-80 space-y-2 overflow-y-auto text-sm text-slate-300"></div>
-        </section>
+        </details>
 
         <!-- 범례 -->
         <div class="mt-4 pt-3 border-t border-slate-700 space-y-1.5 text-xs">
