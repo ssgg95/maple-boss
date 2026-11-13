@@ -131,8 +131,13 @@ async function searchAccount(overrideName) {
   try {
     // 넥슨 API 서버리스 함수 호출
     const res = await fetch(`/api/maple?name=${encodeURIComponent(queryName)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || '조회 실패');
+    const responseText = await res.text();
+    let data = {};
+    try { data = JSON.parse(responseText); } catch (e) { /* API 경로 오류 등 비 JSON 응답 */ }
+    if (!res.ok) {
+      const errorCode = data.nexonCode ? ` (${data.nexonCode})` : '';
+      throw new Error(`${data.error || `캐릭터 검색 실패 (HTTP ${res.status})`}${errorCode}`);
+    }
 
     showSearchView();
     top5Characters = data.top5;

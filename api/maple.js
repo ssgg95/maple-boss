@@ -50,7 +50,30 @@ export default async function handler(req, res) {
     const ocidRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`);
     
     if (!ocidRes.ok) {
-      return res.status(ocidRes.status).json({ error: '존재하지 않는 캐릭터이거나 넥슨 API 오류입니다.' });
+      const nexonError = await ocidRes.json().catch(() => ({}));
+      const nexonCode = nexonError?.error?.name || nexonError?.error?.code || nexonError?.error_code || null;
+      const codeMessages = {
+        OPENAPI00003: '넥슨 API가 캐릭터 식별자를 찾지 못했습니다. 닉네임이 맞는지 확인해 주세요.',
+        OPENAPI00004: '넥슨 API 요청 값이 유효하지 않습니다. 닉네임을 다시 확인해 주세요.',
+        OPENAPI00005: '넥슨 API 키가 유효하지 않습니다. Vercel의 NEXON_API_KEY를 확인해 주세요.',
+        OPENAPI00006: '넥슨 API 키에 메이플스토리가 등록되어 있는지 확인해 주세요.',
+        OPENAPI00007: '넥슨 API 호출 한도를 초과했습니다. 잠시 기다린 뒤 다시 검색해 주세요.',
+        OPENAPI00009: '넥슨 API에서 캐릭터 데이터를 준비 중입니다. 잠시 후 다시 검색해 주세요.',
+        OPENAPI00010: '메이플스토리 API가 점검 중입니다. 잠시 후 다시 검색해 주세요.',
+        OPENAPI00011: '넥슨 API가 점검 중입니다. 잠시 후 다시 검색해 주세요.'
+      };
+      const messages = {
+        400: '넥슨 API가 캐릭터 조회를 거부했습니다. API 오류 코드와 닉네임을 확인해 주세요.',
+        403: '넥슨 API 권한 오류입니다. Vercel의 NEXON_API_KEY 설정을 확인해 주세요.',
+        429: '넥슨 API 호출 한도를 초과했습니다. 잠시 기다린 뒤 다시 검색해 주세요.',
+        500: '넥슨 API 서버에서 오류가 발생했습니다. 잠시 후 다시 검색해 주세요.',
+        503: '넥슨 API가 점검 중입니다. 잠시 후 다시 검색해 주세요.'
+      };
+      return res.status(ocidRes.status).json({
+        error: codeMessages[nexonCode] || messages[ocidRes.status] || `넥슨 API 조회 실패 (HTTP ${ocidRes.status})`,
+        nexonStatus: ocidRes.status,
+        nexonCode
+      });
     }
     
     const { ocid } = await ocidRes.json();
