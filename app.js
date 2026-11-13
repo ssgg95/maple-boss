@@ -36,14 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') searchAccount();
   });
 
-  ['authUsername', 'authPassword', 'authMainChar'].forEach((id) => {
-    document.getElementById(id).addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        submitAuth();
-      }
-    });
-  });
 });
 
 function showHome() {

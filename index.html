@@ -14,7 +14,7 @@
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <span class="text-2xl">🍁</span>
-        <h1 class="font-bold text-lg text-amber-400">라운지금지</h1>
+        <button onclick="showHome()" class="font-bold text-lg text-amber-400 hover:text-amber-300" aria-label="라운지금지 홈으로">라운지금지</button>
       </div>
 
       <!-- 캐릭터/친구 검색창 -->
@@ -40,9 +40,24 @@
     
     <!-- 좌측 메인 콘텐츠 (9칸) -->
     <div class="lg:col-span-9 space-y-6">
+
+      <section id="homeSection" class="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-800 via-slate-800 to-indigo-950 p-8 md:p-12">
+        <div class="mx-auto max-w-3xl text-center">
+          <div class="mb-4 text-5xl">🍁</div>
+          <p class="text-sm font-bold uppercase tracking-[0.25em] text-amber-300">LOUNGE GUMJI</p>
+          <h2 class="mt-3 text-3xl font-extrabold leading-tight text-white md:text-5xl">메이플 계정의 보스 수익을<br class="hidden md:block" /> 한눈에 관리하세요</h2>
+          <p class="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-300 md:text-base">유니온 챔피언 캐릭터와 주간 보스 수익을 확인하고, 날짜별 드랍 아이템과 메소까지 기록할 수 있어요.</p>
+          <button onclick="focusSearch()" class="mt-7 rounded-xl bg-amber-500 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-amber-950/30 transition hover:bg-amber-400">캐릭터 검색하기</button>
+          <div class="mt-9 grid gap-3 text-left sm:grid-cols-3">
+            <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4"><span class="text-xl">🏆</span><h3 class="mt-2 text-sm font-bold text-slate-100">유니온 챔피언</h3><p class="mt-1 text-xs leading-5 text-slate-400">등록한 캐릭터를 자동으로 모아 보여줘요.</p></div>
+            <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4"><span class="text-xl">⚔️</span><h3 class="mt-2 text-sm font-bold text-slate-100">주간 보스 수익</h3><p class="mt-1 text-xs leading-5 text-slate-400">난이도와 파티 인원에 따른 수익을 계산해요.</p></div>
+            <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4"><span class="text-xl">📅</span><h3 class="mt-2 text-sm font-bold text-slate-100">날짜별 획득 기록</h3><p class="mt-1 text-xs leading-5 text-slate-400">보스, 드랍 아이템, 메소를 월별로 정리해요.</p></div>
+          </div>
+        </div>
+      </section>
       
       <!-- 조회 상태 배너 -->
-      <div id="statusBanner" class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-2">
+      <div id="statusBanner" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p id="viewingTitle" class="font-semibold text-base text-slate-200">캐릭터를 검색하거나 로그인하여 보스 수익을 계산해보세요.</p>
           <p id="viewingSub" class="text-xs text-slate-400 mt-0.5">계정 내 어떤 부캐릭터를 검색해도 상위 5개 캐릭터가 자동 매칭됩니다.</p>
@@ -53,7 +68,7 @@
       </div>
 
       <!-- 상위 5개 캐릭터 코디 카드 영역 -->
-      <section>
+      <section id="top5Section" class="hidden">
         <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">계정 레벨 TOP 5 캐릭터</h2>
         <div id="top5Container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           <!-- JS로 렌더링 -->
@@ -64,7 +79,7 @@
       </section>
 
       <!-- 주간 보스 수익 요약 바 -->
-      <section class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+      <section id="summarySection" class="hidden bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-6">
           <div>
             <span class="text-xs text-slate-400 block">주간 총 결정석 수익 (1/N 반영)</span>
@@ -176,10 +191,10 @@
 
   <!-- 초간단 회원가입/로그인 모달 -->
   <div id="authModal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-xl max-w-sm w-full p-6 space-y-4">
+    <form id="authForm" onsubmit="event.preventDefault(); submitAuth()" class="bg-slate-800 border border-slate-700 rounded-xl max-w-sm w-full p-6 space-y-4">
       <div class="flex justify-between items-center">
         <h3 id="modalTitle" class="text-lg font-bold text-amber-400">로그인</h3>
-        <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white">✕</button>
+        <button type="button" onclick="closeAuthModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <div class="space-y-3">
         <div>
@@ -195,10 +210,10 @@
           <input id="authMainChar" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm" placeholder="메이플 닉네임 입력" />
         </div>
       </div>
-      <button id="authSubmitBtn" onclick="submitAuth()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-2 rounded-lg text-sm">
+      <button id="authSubmitBtn" type="submit" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-2 rounded-lg text-sm">
         확인
       </button>
-    </div>
+    </form>
   </div>
 
   <script src="bossData.js"></script>
