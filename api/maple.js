@@ -1,6 +1,5 @@
 // api/maple.js
 export default async function handler(req, res) {
-  // CORS 설정 (필요한 경우)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
@@ -15,71 +14,74 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. 넥슨 API: 릭터 ocid 조회
+    // 1. 캐릭터 ocid 조회
     const ocidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
     });
     
     if (!ocidRes.ok) {
-      const errText = await ocidRes.text();
-      return res.status(ocidRes.status).json({ error: '존재하지 않는 캐릭터이거나 넥슨 API 오류입니다.', details: errText });
+      return res.status(ocidRes.status).json({ error: '존재하지 않는 캐릭터이거나 넥슨 API 오류입니다.' });
     }
     
     const { ocid } = await ocidRes.json();
 
-    // 2. 넥슨 API: 계정 내 캐릭터 조회 (같은 ocid로 묶인 전체 캐릭터 목록)
-    // ※ 넥슨 오픈 API 명세에 따라 계정 캐릭터 조회 API 경로를 사용합니다.
+    // 2. 계정 내 캐릭터 목록 조회 (메이플ID 기준 묶인 캐릭터들)
     const listRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/character-list?ocid=${ocid}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
     });
 
+    let targetCharacters = []; // { character_name, world_name, ... }
     let allCharacterNames = [name];
-    let characters = [];
 
     if (listRes.ok) {
       const listData = await listRes.json();
-      // 계정 내 캐릭터 목록 (API 구조에 맞춰 처리)
-      const rawChars = listData.character_list || [];
-      allCharacterNames = rawChars.map(c => c.character_name);
-
-      // 각 캐릭터의 기본 정보 및 코디(이미지) 조회 (상위 5개 등)
-      // 여기서는 예시로 병렬 조회 처리
-      const charDetails = await Promise.all(
-        rawChars.slice(0, 5).map(async (c) => {
-          // 캐릭터 기본 정보
-          const basicRes = await fetch(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${c.ocid}`, {
-            headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-          });
-          const basic = await basicRes.json();
-
-          return {
-            name: c.character_name,
-            world: c.world_name,
-            job: basic.character_class,
-            level: basic.character_level,
-            image: basic.character_image
-          };
-        })
-      );
-      characters = charDetails;
-    } else {
-      // 단일 캐릭터 정보만이라도 가져오기
-      const basicRes = await fetch(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${ocid}`, {
-        headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-      });
-      const basic = await basicRes.json();
-      characters = [{
-        name: name,
-        world: basic.world_name,
-        job: basic.character_class,
-        level: basic.character_level,
-        image: basic.character_image
-      }];
+      const rawList = listData.account_list?.[0]?.character_list || listData.character_list || [];
+      
+      if (rawList.length > 0) {
+        targetCharacters = rawList;
+        allCharacterNames = rawList.map(c => c.character_name);
+      }
     }
+
+    // 만약 목록 API에서 안 가져와지면 검색한 단일 캐릭터로 fallback
+    if (targetCharacters.length === 0) {
+      targetCharacters = [{ character_name: name }];
+    }
+
+    // 3. 캐릭터들의 상세 정보(레벨, 직업, 코디 이미지) 병렬 조회 (상위 최대 5개)
+    const top5Details = await Promise.all(
+      targetCharacters.slice(0, 5).map(async (charObj) => {
+        const cName = charObj.character_name;
+        
+        // 부캐들 각각의 ocid 다시 조회
+        const cOcidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`, {
+          headers: { 'x-nxopen-api-key': NEXON_API_KEY }
+        });
+        if (!cOcidRes.ok) return null;
+        const { ocid: cOcid } = await cOcidRes.json();
+
+        // 기본 정보 조회 (레벨, 직업, 이미지 등)
+        const basicRes = await fetch(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${cOcid}`, {
+          headers: { 'x-nxopen-api-key': NEXON_API_KEY }
+        });
+        if (!basicRes.ok) return null;
+        const basic = await basicRes.json();
+
+        return {
+          name: basic.character_name,
+          world: basic.world_name,
+          job: basic.character_class,
+          level: basic.character_level,
+          image: basic.character_image
+        };
+      })
+    );
+
+    const validTop5 = top5Details.filter(Boolean);
 
     return res.status(200).json({
       searchedName: name,
-      top5: characters,
+      top5: validTop5.length > 0 ? validTop5 : [{ name, world: '알 수 없음', job: '-', level: 0, image: '' }],
       allCharacterNames: allCharacterNames
     });
 
