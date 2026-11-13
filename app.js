@@ -509,9 +509,6 @@ function getDailyLogs() {
 
 function initDailyLogControls() {
   renderDailyBossOptions();
-  document.getElementById('dailyBossParty').innerHTML = Array.from({ length: 6 }, (_, i) =>
-    `<option value="${i + 1}">${i + 1}인</option>`
-  ).join('');
   renderDailyItemRows([]);
 }
 
@@ -532,6 +529,16 @@ function renderDailyBossOptions() {
           </button>`;
         }).join('')}
       </div>
+      ${(() => {
+        const selectedBoss = group.find(boss => dailyBossDraft.includes(boss.id));
+        if (!selectedBoss) return '';
+        const partySize = dailyBossPartySizes[selectedBoss.id] || 1;
+        return `<label class="mt-1.5 flex items-center gap-2 text-[10px] text-slate-400">분배 인원
+          <select onchange="changeDailyBossParty('${selectedBoss.id}', this.value)" class="rounded border border-slate-600 bg-slate-800 px-1.5 py-1 text-[10px] text-slate-100">
+            ${Array.from({ length: 6 }, (_, index) => `<option value="${index + 1}" ${partySize === index + 1 ? 'selected' : ''}>${index + 1}인</option>`).join('')}
+          </select>
+        </label>`;
+      })()}
     </div>
   `).join('');
 }
@@ -540,8 +547,21 @@ function toggleDailyBoss(bossId) {
   const boss = BOSS_LIST.find(item => item.id === bossId);
   if (!boss) return;
   const alreadySelected = dailyBossDraft.includes(bossId);
+  const previousBossId = dailyBossDraft.find(id => BOSS_LIST.find(item => item.id === id)?.name === boss.name);
+  const partySize = previousBossId ? dailyBossPartySizes[previousBossId] || 1 : 1;
   dailyBossDraft = dailyBossDraft.filter(id => BOSS_LIST.find(item => item.id === id)?.name !== boss.name);
-  if (!alreadySelected) dailyBossDraft.push(bossId);
+  if (previousBossId) delete dailyBossPartySizes[previousBossId];
+  if (!alreadySelected) {
+    dailyBossDraft.push(bossId);
+    dailyBossPartySizes[bossId] = partySize;
+  }
+  renderDailyBossOptions();
+  updateDailyBossPreview();
+}
+
+function changeDailyBossParty(bossId, partySize) {
+  if (!dailyBossDraft.includes(bossId)) return;
+  dailyBossPartySizes[bossId] = Number(partySize) || 1;
   renderDailyBossOptions();
   updateDailyBossPreview();
 }
@@ -629,11 +649,24 @@ function selectCalendarDate(dateKey) {
   const log = getDailyLogs()[dateKey] || {};
   const [year, month, day] = dateKey.split('-').map(Number);
   document.getElementById('dailyLogTitle').textContent = `${year}년 ${month}월 ${day}일 획득 기록`;
-  dailyBossDraft = Array.isArray(log.bosses)
-    ? log.bosses.map(entry => typeof entry === 'string' ? entry : entry.bossId).filter(Boolean)
-    : (log.bossId ? [log.bossId] : []);
+  const savedBosses = Array.isArray(log.bosses) && log.bosses.length
+    ? log.bosses
+    : (log.bossId ? [{ bossId: log.bossId, partySize: log.partySize }] : []);
+  dailyBossDraft = [];
+  dailyBossPartySizes = {};
+  savedBosses.forEach(entry => {
+    const bossId = typeof entry === 'string' ? entry : entry.bossId;
+    const boss = BOSS_LIST.find(item => item.id === bossId);
+    if (!boss) return;
+    const existingId = dailyBossDraft.find(id => BOSS_LIST.find(item => item.id === id)?.name === boss.name);
+    if (existingId) {
+      dailyBossDraft = dailyBossDraft.filter(id => id !== existingId);
+      delete dailyBossPartySizes[existingId];
+    }
+    dailyBossDraft.push(bossId);
+    dailyBossPartySizes[bossId] = Number(typeof entry === 'string' ? log.partySize : entry.partySize) || 1;
+  });
   renderDailyBossOptions();
-  document.getElementById('dailyBossParty').value = String(log.partySize || 1);
   document.getElementById('dailyMesoInput').value = log.meso || '';
   dailyItemDraft = (log.items || []).map(item => ({ ...item }));
   renderDailyItemRows(dailyItemDraft);
@@ -646,9 +679,8 @@ function selectCalendarDate(dateKey) {
 
 function updateDailyBossPreview() {
   const bosses = dailyBossDraft.map(id => BOSS_LIST.find(item => item.id === id)).filter(Boolean);
-  const partySize = Number(document.getElementById('dailyBossParty').value || 1);
   document.getElementById('dailyBossValue').textContent = bosses.length
-    ? `선택 ${bosses.length}개 · 내 몫 합계 ${Math.floor(bosses.reduce((sum, boss) => sum + boss.price / partySize, 0)).toLocaleString()} 메소`
+    ? `선택 ${bosses.length}개 · 내 몫 합계 ${Math.floor(bosses.reduce((sum, boss) => sum + boss.price / (dailyBossPartySizes[boss.id] || 1), 0)).toLocaleString()} 메소`
     : '';
 }
 
@@ -680,6 +712,7 @@ function escapeHtml(value) {
 
 let dailyItemDraft = [];
 let dailyBossDraft = [];
+let dailyBossPartySizes = {};
 const dailyItemSearchTimers = {};
 function addDailyItem() {
   dailyItemDraft.push({ name: '', image: '', price: '' });
@@ -764,7 +797,6 @@ function removeDailyItem(index) {
 
 function saveDailyLog() {
   const logs = getDailyLogs();
-  const partySize = Number(document.getElementById('dailyBossParty').value || 1);
   const meso = Number(document.getElementById('dailyMesoInput').value || 0);
   const items = dailyItemDraft
     .filter(item => item.name.trim() || item.image.trim() || Number(item.price) > 0)
@@ -774,9 +806,9 @@ function saveDailyLog() {
     delete logs[selectedCalendarDate];
   } else {
     logs[selectedCalendarDate] = {
-      bosses: dailyBossDraft.map(bossId => ({ bossId, partySize })),
+      bosses: dailyBossDraft.map(bossId => ({ bossId, partySize: dailyBossPartySizes[bossId] || 1 })),
       bossId: dailyBossDraft[0] || '',
-      partySize,
+      partySize: dailyBossDraft.length ? (dailyBossPartySizes[dailyBossDraft[0]] || 1) : 1,
       meso,
       items,
       updatedAt: new Date().toISOString()
@@ -793,8 +825,8 @@ function clearDailyLog() {
   delete logs[selectedCalendarDate];
   localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
   dailyBossDraft = [];
+  dailyBossPartySizes = {};
   renderDailyBossOptions();
-  document.getElementById('dailyBossParty').value = '1';
   document.getElementById('dailyMesoInput').value = '';
   dailyItemDraft = [];
   renderDailyItemRows(dailyItemDraft);
