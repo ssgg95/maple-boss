@@ -11,6 +11,7 @@ let activeCharName = '';       // 현재 선택된 탭의 캐릭터 이름
 let bossSettings = {};         // { "캐릭터명": { "boss_id": 파티인원(1~6) } }
 let dailyBossClearStatus = {};
 let bossClearScope = 'guest';
+let dailyLootLogs = {};
 let authMode = 'login';
 let selectedCalendarDate = toLocalDateKey(new Date());
 const DAILY_LOG_STORAGE_KEY = 'maple_daily_loot_logs';
@@ -72,6 +73,7 @@ function getHostedItemIconUrl(folder, name) {
 
 // 초기화 실행
 document.addEventListener('DOMContentLoaded', () => {
+  dailyLootLogs = readLocalDailyLogs();
   initDailyLogControls();
   renderMiniCalendar();
   selectCalendarDate(selectedCalendarDate);
@@ -152,18 +154,27 @@ async function searchAccount(overrideName) {
     viewedOwner = matchedUsers && matchedUsers.length > 0 ? matchedUsers[0].username : null;
     loadDailyBossClearStatus(viewedOwner || `guest:${data.searchedName}`);
 
+    let savedSettings = {};
     if (viewedOwner) {
       const { data: settingRow } = await supabaseClient
         .from('boss_settings')
         .select('settings_json')
         .eq('username', viewedOwner)
         .single();
-      const savedSettings = settingRow?.settings_json || {};
+      savedSettings = settingRow?.settings_json || {};
       if (savedSettings.__dailyBossClears) dailyBossClearStatus = savedSettings.__dailyBossClears;
-      const { __weeklyClear, __dailyBossClears, ...savedBossSettings } = savedSettings;
+      const hasSharedLogs = savedSettings.__dailyLootLogs && typeof savedSettings.__dailyLootLogs === 'object';
+      const isMyAccount = currentUser?.username === viewedOwner;
+      dailyLootLogs = hasSharedLogs ? savedSettings.__dailyLootLogs : (isMyAccount ? readLocalDailyLogs() : {});
+      const { __weeklyClear, __dailyBossClears, __dailyLootLogs, ...savedBossSettings } = savedSettings;
+      if (isMyAccount) storeDailyLogsLocally();
       bossSettings = normalizeBossSettings(savedBossSettings);
+      if (isMyAccount && !hasSharedLogs && Object.keys(dailyLootLogs).length) {
+        await persistViewedAccountData();
+      }
     } else {
       bossSettings = {};
+      dailyLootLogs = {};
     }
 
     // UI 업데이트
@@ -191,6 +202,7 @@ async function searchAccount(overrideName) {
     renderCharacterTabs();
     renderBossList();
     calculateSummary();
+    selectCalendarDate(selectedCalendarDate);
   } catch (err) {
     alert(err.message);
   }
@@ -251,7 +263,7 @@ function renderBossList() {
   const characterCount = getCharacterWeeklyBossCount(charBosses);
   const monthlyCount = Object.keys(charBosses).filter(isMonthlyBossId).length;
   const totalCount = getTotalCrystalCount();
-  const isReadOnly = viewedOwner && (!currentUser || currentUser.username !== viewedOwner);
+  const isReadOnly = isViewingOtherAccount();
 
   document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 보스 설정 (주간 ${characterCount}/12 · 월간 ${monthlyCount})`;
   const renderGroup = group => {
@@ -346,28 +358,32 @@ function renderDailyConfiguredBosses() {
     allCheckbox.disabled = Boolean(isReadOnly) || configured.length === 0;
   }
   container.innerHTML = configured.length
-    ? configured.map(({ boss, partySize }) => `<label class="flex items-center justify-between gap-2 rounded border border-slate-700/70 bg-slate-800/70 px-2 py-1.5 text-[11px] text-slate-200">
-        <span class="min-w-0 truncate">${boss.name} · ${boss.diff} <span class="text-slate-400">(${partySize}인)</span></span>
-        <span class="flex shrink-0 items-center gap-1 text-emerald-300"><input type="checkbox" ${charStatus[boss.id] ? 'checked' : ''} ${isReadOnly ? 'disabled' : ''} onchange="toggleDailyBossCleared('${boss.id}', this.checked)" class="accent-emerald-500" /> 클리어</span>
+    ? configured.map(({ boss, partySize }) => `<label class="flex items-center justify-between gap-3 rounded-lg border border-slate-700/70 bg-slate-800/70 px-3 py-2.5 text-sm text-slate-200">
+        <span class="min-w-0">${boss.name} · ${boss.diff} <span class="text-slate-400">(${partySize}인)</span></span>
+        <span class="flex shrink-0 items-center gap-2 font-semibold text-emerald-300"><input type="checkbox" ${charStatus[boss.id] ? 'checked' : ''} ${isReadOnly ? 'disabled' : ''} onchange="toggleDailyBossCleared('${boss.id}', this.checked)" class="h-4 w-4 accent-emerald-500" /> 클리어</span>
       </label>`).join('')
     : '<p class="rounded border border-slate-700/70 bg-slate-800/50 px-2 py-2 text-[11px] text-slate-500">이 캐릭터에 설정된 주간 보스가 없습니다.</p>';
 }
 
 function toggleDailyBossCleared(bossId, checked) {
+  if (isViewingOtherAccount()) return;
   if (!dailyBossClearStatus[selectedCalendarDate]) dailyBossClearStatus[selectedCalendarDate] = {};
   if (!dailyBossClearStatus[selectedCalendarDate][activeCharName]) dailyBossClearStatus[selectedCalendarDate][activeCharName] = {};
   dailyBossClearStatus[selectedCalendarDate][activeCharName][bossId] = checked;
   saveDailyBossClearStatus();
   renderDailyConfiguredBosses();
+  persistViewedAccountData();
 }
 
 function setAllDailyBossesCleared(checked) {
+  if (isViewingOtherAccount()) return;
   if (!dailyBossClearStatus[selectedCalendarDate]) dailyBossClearStatus[selectedCalendarDate] = {};
   if (!dailyBossClearStatus[selectedCalendarDate][activeCharName]) dailyBossClearStatus[selectedCalendarDate][activeCharName] = {};
   Object.keys(bossSettings[activeCharName] || {}).filter(bossId => !isMonthlyBossId(bossId))
     .forEach(bossId => { dailyBossClearStatus[selectedCalendarDate][activeCharName][bossId] = checked; });
   saveDailyBossClearStatus();
   renderDailyConfiguredBosses();
+  persistViewedAccountData();
 }
 
 function toggleBoss(bossId, checked) {
@@ -514,16 +530,7 @@ function calculateSummary() {
 // 7. Supabase DB에 내 보스 설정 영구 저장
 async function saveMySettings() {
   if (!currentUser) return;
-  const { error } = await supabaseClient
-    .from('boss_settings')
-    .upsert({
-      username: currentUser.username,
-      settings_json: {
-        ...bossSettings,
-        __dailyBossClears: dailyBossClearStatus
-      },
-      updated_at: new Date().toISOString()
-    });
+  const { error } = await persistViewedAccountData(true);
 
   if (error) alert('저장 실패: ' + error.message);
   else alert('내 주간 보스 설정이 저장되었습니다! 이제 친구가 내 닉네임으로 검색하면 그대로 볼 수 있습니다.');
@@ -626,11 +633,42 @@ function toLocalDateKey(date) {
 }
 
 function getDailyLogs() {
+  return dailyLootLogs;
+}
+
+function readLocalDailyLogs() {
   try {
     return JSON.parse(localStorage.getItem(DAILY_LOG_STORAGE_KEY) || '{}');
   } catch {
     return {};
   }
+}
+
+function storeDailyLogsLocally() {
+  localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(dailyLootLogs));
+}
+
+async function persistViewedAccountData(showError = false) {
+  const ownsViewedAccount = Boolean(currentUser && currentUser.username === viewedOwner);
+  if (!ownsViewedAccount) {
+    if (!viewedOwner && !currentUser) storeDailyLogsLocally();
+    return { error: null, localOnly: true };
+  }
+  storeDailyLogsLocally();
+
+  const { error } = await supabaseClient
+    .from('boss_settings')
+    .upsert({
+      username: currentUser.username,
+      settings_json: {
+        ...bossSettings,
+        __dailyBossClears: dailyBossClearStatus,
+        __dailyLootLogs: dailyLootLogs
+      },
+      updated_at: new Date().toISOString()
+    });
+  if (error && showError) alert('저장 실패: ' + error.message);
+  return { error, localOnly: false };
 }
 
 function initDailyLogControls() {
@@ -681,7 +719,7 @@ function renderMiniCalendar() {
     if (isSelected) badgeClass += ' ring-2 ring-amber-400';
     if (dateKey === todayKey) badgeClass += ' shadow-[inset_0_0_0_1px_rgba(251,191,36,0.65)]';
 
-    html += `<button type="button" title="${title}" onclick="selectCalendarDate('${dateKey}')" class="relative py-1.5 rounded-md ${badgeClass}">${day}${hasLog ? '<span class="absolute right-1 top-0.5 h-1 w-1 rounded-full bg-emerald-300"></span>' : ''}</button>`;
+    html += `<button type="button" title="${title}" onclick="selectCalendarDate('${dateKey}')" class="relative aspect-square rounded-lg text-sm font-semibold transition sm:text-base ${badgeClass}">${day}${hasLog ? '<span class="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-emerald-300"></span>' : ''}</button>`;
   }
   grid.innerHTML = html;
 }
@@ -725,6 +763,15 @@ function selectCalendarDate(dateKey) {
   dailyItemDraft = (log.items || []).map(item => ({ ...item }));
   renderDailyItemRows(dailyItemDraft);
   document.getElementById('dailyLogStatus').textContent = log.updatedAt ? '저장된 기록을 불러왔어요.' : '';
+  const isReadOnly = isViewingOtherAccount();
+  document.getElementById('dailyMesoInput').disabled = Boolean(isReadOnly);
+  document.getElementById('dailyAddItemButton').disabled = Boolean(isReadOnly);
+  document.getElementById('dailySaveButton').disabled = Boolean(isReadOnly);
+  document.getElementById('dailyClearButton').disabled = Boolean(isReadOnly);
+  ['dailyAddItemButton', 'dailySaveButton', 'dailyClearButton'].forEach(id => {
+    document.getElementById(id).classList.toggle('opacity-50', Boolean(isReadOnly));
+    document.getElementById(id).classList.toggle('cursor-not-allowed', Boolean(isReadOnly));
+  });
   updateSundayMaplePanel(dateKey);
   renderMiniCalendar();
   renderMonthlySummary();
@@ -732,6 +779,7 @@ function selectCalendarDate(dateKey) {
 
 function renderDailyItemRows(items) {
   const rows = items.length ? items : [];
+  const isReadOnly = isViewingOtherAccount();
   document.getElementById('dailyItemRows').innerHTML = rows.map((item, index) => {
     const imageUrl = /^https:\/\//i.test(item.image || '')
       ? item.image.replace('/KMS/latest/', `/KMS/${MAPLESTORY_DATA_VERSION}/`)
@@ -744,13 +792,17 @@ function renderDailyItemRows(items) {
         </div>
         <div class="min-w-0 flex-1">
           <p class="truncate text-base font-bold text-slate-100 sm:text-lg">${escapeHtml(item.name || '아이템을 선택하세요')}</p>
-          <button type="button" onclick="openDailyItemCatalog(${index})" class="mt-2 rounded-lg border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20">${item.name ? '아이템 변경' : '아이템 고르기'}</button>
+          <button type="button" ${isReadOnly ? 'disabled' : ''} onclick="openDailyItemCatalog(${index})" class="mt-2 rounded-lg border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50">${item.name ? '아이템 변경' : '아이템 고르기'}</button>
         </div>
-        <button onclick="removeDailyItem(${index})" class="self-start rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-700 hover:text-rose-300" aria-label="아이템 삭제">✕</button>
+        <button ${isReadOnly ? 'disabled' : ''} onclick="removeDailyItem(${index})" class="self-start rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-700 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50" aria-label="아이템 삭제">✕</button>
       </div>
-      <input type="number" min="0" value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItemPrice(${index}, this.value)" class="mt-3 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 sm:text-base" placeholder="아이템 가격 (메소)" />
+      <input type="number" min="0" ${isReadOnly ? 'disabled' : ''} value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItemPrice(${index}, this.value)" class="mt-3 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 sm:text-base disabled:opacity-60" placeholder="아이템 가격 (메소)" />
     </div>`;
   }).join('') || '<p class="text-[11px] text-slate-500">+ 아이템을 눌러 드랍 아이템을 추가하세요.</p>';
+}
+
+function isViewingOtherAccount() {
+  return Boolean(viewedOwner && (!currentUser || currentUser.username !== viewedOwner));
 }
 
 function escapeHtml(value) {
@@ -786,16 +838,19 @@ function renderItemCatalogTile(item) {
 }
 
 function addDailyItem() {
+  if (viewedOwner && (!currentUser || currentUser.username !== viewedOwner)) return;
   dailyItemDraft.push({ name: '', image: '', price: '' });
   renderDailyItemRows(dailyItemDraft);
   openDailyItemCatalog(dailyItemDraft.length - 1);
 }
 
 function updateDailyItemPrice(index, value) {
+  if (isViewingOtherAccount()) return;
   if (dailyItemDraft[index]) dailyItemDraft[index].price = value;
 }
 
 function openDailyItemCatalog(index) {
+  if (isViewingOtherAccount()) return;
   if (!dailyItemDraft[index]) return;
   activeItemCatalogIndex = index;
   itemCatalogQuery = '';
@@ -864,6 +919,7 @@ async function searchDailyItemCatalog(query) {
 }
 
 function selectDailyItem(index, itemId, encodedName, encodedImage = '') {
+  if (isViewingOtherAccount()) return;
   clearTimeout(dailyItemSearchTimers[index]);
   const name = decodeURIComponent(encodedName);
   dailyItemDraft[index] = {
@@ -877,6 +933,7 @@ function selectDailyItem(index, itemId, encodedName, encodedImage = '') {
 }
 
 function removeDailyItem(index) {
+  if (isViewingOtherAccount()) return;
   clearTimeout(dailyItemSearchTimers.catalog);
   if (activeItemCatalogIndex === index) closeDailyItemCatalog();
   dailyItemDraft.splice(index, 1);
@@ -884,7 +941,7 @@ function removeDailyItem(index) {
 }
 
 function saveDailyLog() {
-  const logs = getDailyLogs();
+  if (viewedOwner && (!currentUser || currentUser.username !== viewedOwner)) return;
   const meso = Number(document.getElementById('dailyMesoInput').value || 0);
   const clearedBosses = getClearedConfiguredBossEntries(selectedCalendarDate);
   const items = dailyItemDraft
@@ -892,9 +949,9 @@ function saveDailyLog() {
     .map(item => ({ name: item.name.trim(), itemId: item.itemId || null, image: item.image.trim(), price: Number(item.price) || 0 }));
 
   if (clearedBosses.length === 0 && meso === 0 && items.length === 0) {
-    delete logs[selectedCalendarDate];
+    delete dailyLootLogs[selectedCalendarDate];
   } else {
-    logs[selectedCalendarDate] = {
+    dailyLootLogs[selectedCalendarDate] = {
       bosses: clearedBosses,
       bossId: clearedBosses[0]?.bossId || '',
       partySize: clearedBosses[0]?.partySize || 1,
@@ -903,10 +960,16 @@ function saveDailyLog() {
       updatedAt: new Date().toISOString()
     };
   }
-  localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
-  document.getElementById('dailyLogStatus').textContent = '이 브라우저에 저장했어요.';
+  document.getElementById('dailyLogStatus').textContent = currentUser?.username === viewedOwner
+    ? '저장 중...'
+    : '이 브라우저에 저장했어요.';
   renderMiniCalendar();
   renderMonthlySummary();
+  persistViewedAccountData().then(({ error, localOnly }) => {
+    document.getElementById('dailyLogStatus').textContent = error
+      ? `계정 저장 실패: ${error.message}`
+      : localOnly ? '이 브라우저에 저장했어요.' : '계정에 저장했어요. 친구도 볼 수 있어요.';
+  });
 }
 
 function getClearedConfiguredBossEntries(dateKey) {
@@ -923,18 +986,22 @@ function getClearedConfiguredBossEntries(dateKey) {
 }
 
 function clearDailyLog() {
-  const logs = getDailyLogs();
-  delete logs[selectedCalendarDate];
-  localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
+  if (viewedOwner && (!currentUser || currentUser.username !== viewedOwner)) return;
+  delete dailyLootLogs[selectedCalendarDate];
   delete dailyBossClearStatus[selectedCalendarDate];
   saveDailyBossClearStatus();
   renderDailyConfiguredBosses();
   document.getElementById('dailyMesoInput').value = '';
   dailyItemDraft = [];
   renderDailyItemRows(dailyItemDraft);
-  document.getElementById('dailyLogStatus').textContent = '선택한 날짜의 기록을 지웠어요.';
+  document.getElementById('dailyLogStatus').textContent = '선택한 날짜의 기록을 지우는 중...';
   renderMiniCalendar();
   renderMonthlySummary();
+  persistViewedAccountData().then(({ error, localOnly }) => {
+    document.getElementById('dailyLogStatus').textContent = error
+      ? `계정 저장 실패: ${error.message}`
+      : localOnly ? '선택한 날짜의 기록을 지웠어요.' : '기록을 삭제하고 계정에 저장했어요.';
+  });
 }
 
 function getDailyLogTotal(log) {
@@ -972,7 +1039,7 @@ function renderMonthlySummary() {
       .filter(Boolean).map(boss => `${boss.name} ${boss.diff}`).join(', ');
     const itemNames = (log.items || []).map(item => item.name).filter(Boolean).join(', ');
     const description = [bossNames, itemNames].filter(Boolean).join(' · ');
-    return `<div class="flex justify-between gap-2 border-t border-slate-700/70 pt-1"><span>${Number(date.slice(-2))}일${description ? ` · ${escapeHtml(description)}` : ''}</span><strong class="shrink-0 text-emerald-300">${Math.round(totals.total).toLocaleString()}</strong></div>`;
+    return `<div class="flex flex-col gap-1 rounded-lg border border-slate-700/70 bg-slate-800/50 p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3"><span class="min-w-0 text-sm leading-5 text-slate-200">${Number(date.slice(-2))}일${description ? ` · ${escapeHtml(description)}` : ''}</span><strong class="shrink-0 text-sm text-emerald-300">${Math.round(totals.total).toLocaleString()} 메소</strong></div>`;
   });
   document.getElementById('monthlyTotal').textContent = `${Math.round(bossTotal + itemTotal + mesoTotal).toLocaleString()} 메소`;
   document.getElementById('monthlyBreakdown').textContent = `보스 ${Math.round(bossTotal).toLocaleString()} + 아이템 ${Math.round(itemTotal).toLocaleString()} + 메소 ${Math.round(mesoTotal).toLocaleString()}`;
