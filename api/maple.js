@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. 검색한 캐릭터의 ocid 조회
+    // 1. 캐릭터 ocid 조회
     const ocidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
     });
@@ -25,8 +25,8 @@ export default async function handler(req, res) {
     
     const { ocid } = await ocidRes.json();
 
-    // 2. 유니온 레이더(배치된 캐릭터 목록) 조회
-    let characterNames = [name]; // 기본은 검색한 캐릭터
+    // 2. 유니온 레이더 조회 (배치된 캐릭터 목록 추출)
+    let characterNames = [name];
 
     const unionRaiderRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/union-raider?ocid=${ocid}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
@@ -34,21 +34,18 @@ export default async function handler(req, res) {
 
     if (unionRaiderRes.ok) {
       const raiderData = await unionRaiderRes.json();
-      // 유니온 블록에 배치된 캐릭터들의 이름 추출 (중복 제거)
-      if (raiderData.union_inner_stat && Array.isArray(raiderData.union_block)) {
-        const unionChars = raiderData.union_block
+      // 유니온 블록(union_block)에 포함된 캐릭터 이름 추출
+      if (raiderData && Array.isArray(raiderData.union_block)) {
+        const raiderChars = raiderData.union_block
           .map(block => block.character_name)
           .filter(Boolean);
         
-        // 검색한 캐릭터를 맨 앞에 두고, 유니온 캐릭터들 합치기 (중복 제거)
-        characterNames = Array.from(new Set([name, ...unionChars]));
+        characterNames = Array.from(new Set([name, ...raiderChars]));
       }
     }
 
-    // 3. 각 캐릭터들의 레벨 및 기본 정보를 조회하기 위해 먼저 레벨/월드 정보를 일괄 파악하거나 상위 후보군 선별
-    // (넥슨 API 호출 횟수 제한을 고려하여 최대 10개 정도만 상세 조회 후 레벨 순 정렬)
-    const candidateNames = characterNames.slice(0, 10); // 성능을 위해 최대 10개만 탐색
-
+    // 3. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 병렬 조회 (최대 10개)
+    const candidateNames = characterNames.slice(0, 10);
     const detailsPromises = candidateNames.map(async (cName) => {
       try {
         const cOcidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`, {
@@ -77,7 +74,7 @@ export default async function handler(req, res) {
 
     const results = (await Promise.all(detailsPromises)).filter(Boolean);
 
-    // 레벨 높은 순서대로 정렬하여 상위 5개 추출
+    // 레벨 높은 순 정렬 후 상위 5개 추출
     results.sort((a, b) => b.level - a.level);
     const top5 = results.slice(0, 5);
 
