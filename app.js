@@ -35,6 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchAccount();
   });
+
+  ['authUsername', 'authPassword', 'authMainChar'].forEach((id) => {
+    document.getElementById(id).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitAuth();
+      }
+    });
+  });
 });
 
 function showHome() {
