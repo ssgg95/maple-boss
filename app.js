@@ -9,7 +9,7 @@ let viewedOwner = null;        // 현재 조회 중인 계정 주인 username (�
 let top5Characters = [];       // 현재 화면의 상위 5개 캐릭터 배열
 let activeCharName = '';       // 현재 선택된 탭의 캐릭터 이름
 let bossSettings = {};         // { "캐릭터명": { "boss_id": 파티인원(1~6) } }
-let weeklyClearStatus = {};
+let dailyBossClearStatus = {};
 let bossClearScope = 'guest';
 let authMode = 'login';
 let selectedCalendarDate = toLocalDateKey(new Date());
@@ -94,7 +94,7 @@ async function searchAccount(overrideName) {
       .or(`main_character.eq.${queryName},account_characters.cs.{${queryName}}`);
 
     viewedOwner = matchedUsers && matchedUsers.length > 0 ? matchedUsers[0].username : null;
-    loadWeeklyClearStatus(viewedOwner || `guest:${data.searchedName}`);
+    loadDailyBossClearStatus(viewedOwner || `guest:${data.searchedName}`);
 
     if (viewedOwner) {
       const { data: settingRow } = await supabaseClient
@@ -103,11 +103,8 @@ async function searchAccount(overrideName) {
         .eq('username', viewedOwner)
         .single();
       const savedSettings = settingRow?.settings_json || {};
-      const savedClearStatus = savedSettings.__weeklyClear;
-      if (savedClearStatus?.weekKey === getWeeklyResetDateKey()) {
-        weeklyClearStatus = savedClearStatus.chars || {};
-      }
-      const { __weeklyClear, ...savedBossSettings } = savedSettings;
+      if (savedSettings.__dailyBossClears) dailyBossClearStatus = savedSettings.__dailyBossClears;
+      const { __weeklyClear, __dailyBossClears, ...savedBossSettings } = savedSettings;
       bossSettings = normalizeBossSettings(savedBossSettings);
     } else {
       bossSettings = {};
@@ -187,6 +184,7 @@ function selectCharacterTab(charName) {
   renderTop5Cards();
   renderCharacterTabs();
   renderBossList();
+  renderDailyConfiguredBosses();
   calculateSummary();
 }
 
@@ -198,14 +196,8 @@ function renderBossList() {
   const monthlyCount = Object.keys(charBosses).filter(isMonthlyBossId).length;
   const totalCount = getTotalCrystalCount();
   const isReadOnly = viewedOwner && (!currentUser || currentUser.username !== viewedOwner);
-  const selectedWeeklyIds = Object.keys(charBosses).filter(bossId => !isMonthlyBossId(bossId));
-  const allWeeklyCleared = selectedWeeklyIds.length > 0 && selectedWeeklyIds.every(bossId => Boolean(weeklyClearStatus[activeCharName]?.[bossId]));
 
   document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 보스 설정 (주간 ${characterCount}/12 · 월간 ${monthlyCount})`;
-  const clearAllCheckbox = document.getElementById('clearAllBosses');
-  clearAllCheckbox.checked = allWeeklyCleared;
-  clearAllCheckbox.disabled = Boolean(isReadOnly) || selectedWeeklyIds.length === 0;
-
   const renderGroup = group => {
     const selectedBoss = group.find(boss => charBosses[boss.id] !== undefined);
     const isChecked = Boolean(selectedBoss);
@@ -247,7 +239,6 @@ function renderBossList() {
             class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 disabled:opacity-40">
             ${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${selectedPartySize == n ? 'selected' : ''}>${n}인 (1/${n})</option>`).join('')}
           </select>
-          ${selectedBoss && !isMonthly ? `<label class="flex items-center gap-1 text-[11px] text-emerald-300"><input type="checkbox" ${weeklyClearStatus[activeCharName]?.[selectedBoss.id] ? 'checked' : ''} ${isReadOnly ? 'disabled' : ''} onchange="toggleBossCleared('${selectedBoss.id}', this.checked)" class="accent-emerald-500" /> 클리어</label>` : ''}
         </div>
       </div>
     `;
@@ -262,45 +253,65 @@ function renderBossList() {
     <div class="col-span-full mt-3 -mb-1 border-t border-slate-700 pt-3 text-sm font-bold text-violet-300">월간 보스</div>
     ${monthlyGroups.map(renderGroup).join('')}
   `;
+  renderDailyConfiguredBosses();
 }
 
-function getWeeklyResetDateKey(date = new Date()) {
-  const resetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const daysSinceThursday = (resetDate.getDay() - 4 + 7) % 7;
-  resetDate.setDate(resetDate.getDate() - daysSinceThursday);
-  return toLocalDateKey(resetDate);
+function getDailyBossClearStorageKey() {
+  return `maple_daily_boss_clears_${encodeURIComponent(bossClearScope)}`;
 }
 
-function getWeeklyClearStorageKey() {
-  return `maple_weekly_clear_${encodeURIComponent(bossClearScope)}_${getWeeklyResetDateKey()}`;
-}
-
-function loadWeeklyClearStatus(scope) {
+function loadDailyBossClearStatus(scope) {
   bossClearScope = scope || 'guest';
   try {
-    weeklyClearStatus = JSON.parse(localStorage.getItem(getWeeklyClearStorageKey()) || '{}');
+    dailyBossClearStatus = JSON.parse(localStorage.getItem(getDailyBossClearStorageKey()) || '{}');
   } catch {
-    weeklyClearStatus = {};
+    dailyBossClearStatus = {};
   }
 }
 
-function saveWeeklyClearStatus() {
-  localStorage.setItem(getWeeklyClearStorageKey(), JSON.stringify(weeklyClearStatus));
+function saveDailyBossClearStatus() {
+  localStorage.setItem(getDailyBossClearStorageKey(), JSON.stringify(dailyBossClearStatus));
 }
 
-function toggleBossCleared(bossId, checked) {
-  if (!weeklyClearStatus[activeCharName]) weeklyClearStatus[activeCharName] = {};
-  weeklyClearStatus[activeCharName][bossId] = checked;
-  saveWeeklyClearStatus();
-  renderBossList();
+function renderDailyConfiguredBosses() {
+  const container = document.getElementById('dailyConfiguredBosses');
+  if (!container) return;
+  const isReadOnly = viewedOwner && (!currentUser || currentUser.username !== viewedOwner);
+  const configured = Object.keys(bossSettings[activeCharName] || {})
+    .filter(bossId => !isMonthlyBossId(bossId))
+    .map(bossId => ({ boss: BOSS_LIST.find(item => item.id === bossId), partySize: bossSettings[activeCharName][bossId] }))
+    .filter(entry => entry.boss);
+  const dateStatus = dailyBossClearStatus[selectedCalendarDate] || {};
+  const charStatus = dateStatus[activeCharName] || {};
+  const allCleared = configured.length > 0 && configured.every(({ boss }) => Boolean(charStatus[boss.id]));
+  const allCheckbox = document.getElementById('clearAllDailyBosses');
+  if (allCheckbox) {
+    allCheckbox.checked = allCleared;
+    allCheckbox.disabled = Boolean(isReadOnly) || configured.length === 0;
+  }
+  container.innerHTML = configured.length
+    ? configured.map(({ boss, partySize }) => `<label class="flex items-center justify-between gap-2 rounded border border-slate-700/70 bg-slate-800/70 px-2 py-1.5 text-[11px] text-slate-200">
+        <span class="min-w-0 truncate">${boss.name} · ${boss.diff} <span class="text-slate-400">(${partySize}인)</span></span>
+        <span class="flex shrink-0 items-center gap-1 text-emerald-300"><input type="checkbox" ${charStatus[boss.id] ? 'checked' : ''} ${isReadOnly ? 'disabled' : ''} onchange="toggleDailyBossCleared('${boss.id}', this.checked)" class="accent-emerald-500" /> 클리어</span>
+      </label>`).join('')
+    : '<p class="rounded border border-slate-700/70 bg-slate-800/50 px-2 py-2 text-[11px] text-slate-500">이 캐릭터에 설정된 주간 보스가 없습니다.</p>';
 }
 
-function setAllWeeklyBossesCleared(checked) {
-  if (!weeklyClearStatus[activeCharName]) weeklyClearStatus[activeCharName] = {};
+function toggleDailyBossCleared(bossId, checked) {
+  if (!dailyBossClearStatus[selectedCalendarDate]) dailyBossClearStatus[selectedCalendarDate] = {};
+  if (!dailyBossClearStatus[selectedCalendarDate][activeCharName]) dailyBossClearStatus[selectedCalendarDate][activeCharName] = {};
+  dailyBossClearStatus[selectedCalendarDate][activeCharName][bossId] = checked;
+  saveDailyBossClearStatus();
+  renderDailyConfiguredBosses();
+}
+
+function setAllDailyBossesCleared(checked) {
+  if (!dailyBossClearStatus[selectedCalendarDate]) dailyBossClearStatus[selectedCalendarDate] = {};
+  if (!dailyBossClearStatus[selectedCalendarDate][activeCharName]) dailyBossClearStatus[selectedCalendarDate][activeCharName] = {};
   Object.keys(bossSettings[activeCharName] || {}).filter(bossId => !isMonthlyBossId(bossId))
-    .forEach(bossId => { weeklyClearStatus[activeCharName][bossId] = checked; });
-  saveWeeklyClearStatus();
-  renderBossList();
+    .forEach(bossId => { dailyBossClearStatus[selectedCalendarDate][activeCharName][bossId] = checked; });
+  saveDailyBossClearStatus();
+  renderDailyConfiguredBosses();
 }
 
 function toggleBoss(bossId, checked) {
@@ -453,10 +464,7 @@ async function saveMySettings() {
       username: currentUser.username,
       settings_json: {
         ...bossSettings,
-        __weeklyClear: {
-          weekKey: getWeeklyResetDateKey(),
-          chars: weeklyClearStatus
-        }
+        __dailyBossClears: dailyBossClearStatus
       },
       updated_at: new Date().toISOString()
     });
@@ -711,6 +719,7 @@ function selectCalendarDate(dateKey) {
   const log = getDailyLogs()[dateKey] || {};
   const [year, month, day] = dateKey.split('-').map(Number);
   document.getElementById('dailyLogTitle').textContent = `${year}년 ${month}월 ${day}일 획득 기록`;
+  renderDailyConfiguredBosses();
   const savedBosses = Array.isArray(log.bosses) && log.bosses.length
     ? log.bosses
     : (log.bossId ? [{ bossId: log.bossId, partySize: log.partySize }] : []);
