@@ -25,17 +25,39 @@ document.addEventListener('DOMContentLoaded', () => {
   initDailyLogControls();
   renderMiniCalendar();
   selectCalendarDate(selectedCalendarDate);
+  showHome();
   const savedUser = localStorage.getItem('maple_user');
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
     updateAuthUI();
-    searchAccount(currentUser.main_character);
   }
 
   document.getElementById('searchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchAccount();
   });
 });
+
+function showHome() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('homeSection').classList.remove('hidden');
+  document.getElementById('statusBanner').classList.add('hidden');
+  document.getElementById('top5Section').classList.add('hidden');
+  document.getElementById('summarySection').classList.add('hidden');
+  document.getElementById('bossSection').classList.add('hidden');
+}
+
+function showSearchView() {
+  document.getElementById('homeSection').classList.add('hidden');
+  document.getElementById('statusBanner').classList.remove('hidden');
+  document.getElementById('top5Section').classList.remove('hidden');
+  document.getElementById('summarySection').classList.remove('hidden');
+}
+
+function focusSearch() {
+  const input = document.getElementById('searchInput');
+  input.focus();
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 
 // 1. SHA-256 비밀번호 해시 유틸리티
 async function hashPassword(pw) {
@@ -58,6 +80,7 @@ async function searchAccount(overrideName) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '조회 실패');
 
+    showSearchView();
     top5Characters = data.top5;
     activeCharName = top5Characters[0]?.name || '';
 
@@ -115,10 +138,12 @@ function renderTop5Cards() {
   const container = document.getElementById('top5Container');
   container.innerHTML = top5Characters.map((char, idx) => `
     <div onclick="selectCharacterTab('${char.name}')"
-      class="cursor-pointer bg-slate-800 border ${char.name === activeCharName ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-700'} rounded-xl p-3 flex flex-col items-center text-center transition hover:border-slate-500">
+      class="cursor-pointer bg-slate-800 border ${char.name === activeCharName ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-700'} rounded-xl p-2 flex flex-col items-center text-center transition hover:border-slate-500">
       <span class="self-start text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700 text-amber-300">TOP ${idx + 1}</span>
-      <img src="${char.image}" alt="${char.name}" class="w-64 h-64 max-w-full object-contain my-1 scale-110" />
-      <div class="font-bold text-sm text-slate-100 mt-1">${char.name}</div>
+      <div class="h-44 sm:h-48 w-full overflow-hidden flex items-center justify-center -my-1">
+        <img src="${char.image}" alt="${char.name}" class="w-64 h-64 max-w-none object-contain scale-[2.4]" />
+      </div>
+      <div class="font-bold text-sm text-slate-100">${char.name}</div>
       <div class="text-xs text-slate-400">Lv.${char.level} · ${char.world}</div>
       <div class="text-[11px] text-indigo-300 mt-0.5 truncate w-full">${char.job}</div>
     </div>
@@ -400,14 +425,14 @@ async function submitAuth() {
   localStorage.setItem('maple_user', JSON.stringify(currentUser));
   closeAuthModal();
   updateAuthUI();
-  searchAccount(currentUser.main_character);
+  showHome();
 }
 
 function logout() {
   currentUser = null;
   localStorage.removeItem('maple_user');
   updateAuthUI();
-  document.getElementById('saveBtn').classList.add('hidden');
+  showHome();
 }
 
 function updateAuthUI() {
