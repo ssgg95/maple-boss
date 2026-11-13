@@ -705,7 +705,8 @@ function renderMiniCalendar() {
     const dateKey = toLocalDateKey(date);
     const dayOfWeek = date.getDay();
     const isSelected = dateKey === selectedCalendarDate;
-    const hasLog = Boolean(logs[dateKey]);
+    const log = logs[dateKey];
+    const hasLog = Boolean(log);
     let badgeClass = 'bg-slate-700/40 text-slate-300 hover:bg-slate-600';
     let title = '날짜별 기록 입력';
 
@@ -719,7 +720,22 @@ function renderMiniCalendar() {
     if (isSelected) badgeClass += ' ring-2 ring-amber-400';
     if (dateKey === todayKey) badgeClass += ' shadow-[inset_0_0_0_1px_rgba(251,191,36,0.65)]';
 
-    html += `<button type="button" title="${title}" onclick="selectCalendarDate('${dateKey}')" class="relative aspect-square rounded-lg text-sm font-semibold transition sm:text-base ${badgeClass}">${day}${hasLog ? '<span class="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-emerald-300"></span>' : ''}</button>`;
+    const total = hasLog ? getDailyLogTotal(log).total : 0;
+    const compactTotal = total ? formatCompactMeso(total) : '';
+    const mesoHunted = Number(log?.meso) || 0;
+    const compactHuntedMeso = mesoHunted ? formatCompactMeso(mesoHunted) : '';
+    const showSeparateTotal = compactTotal && Math.round(total) !== Math.round(mesoHunted);
+    const recordedItems = log?.items || [];
+    const itemNames = recordedItems.map(item => item.name).filter(Boolean).join(', ');
+    const topItem = recordedItems.reduce((best, item) =>
+      !best || (Number(item.price) || 0) > (Number(best.price) || 0) ? item : best, null);
+    const topItemImage = topItem?.image || (topItem?.itemId ? getMapleItemIconUrl(topItem.itemId) : '');
+    const logHint = hasLog ? ` · 합계 ${Math.round(total).toLocaleString()} 메소${mesoHunted ? ` · 사냥 메소 ${Math.round(mesoHunted).toLocaleString()}` : ''}${itemNames ? ` · ${itemNames}` : ''}` : '';
+
+    const itemIcon = topItemImage
+      ? `<img src="${escapeHtml(topItemImage)}" alt="${escapeHtml(topItem.name || '획득 아이템')}" title="${escapeHtml(topItem.name || '획득 아이템')}" class="h-4 w-4 object-contain" onerror="this.classList.add('hidden')" />`
+      : (topItem ? '<span class="text-[11px] leading-4" title="획득 아이템">🎁</span>' : '');
+    html += `<button type="button" title="${escapeHtml(`${title}${logHint}`)}" onclick="selectCalendarDate('${dateKey}')" class="relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold transition sm:text-base ${badgeClass}"><span>${day}</span>${showSeparateTotal ? `<span class="max-w-full truncate text-[9px] leading-3 text-emerald-200 sm:text-[10px]">총${compactTotal}</span>` : ''}${compactHuntedMeso ? `<span class="max-w-full truncate text-[9px] leading-3 text-amber-200 sm:text-[10px]">⛏${compactHuntedMeso}</span>` : (compactTotal ? `<span class="max-w-full truncate text-[9px] leading-3 text-emerald-200 sm:text-[10px]">${compactTotal}</span>` : '')}${itemIcon}${hasLog ? '<span class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-300"></span>' : ''}</button>`;
   }
   grid.innerHTML = html;
 }
@@ -797,6 +813,7 @@ function renderDailyItemRows(items) {
         <button ${isReadOnly ? 'disabled' : ''} onclick="removeDailyItem(${index})" class="self-start rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-700 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50" aria-label="아이템 삭제">✕</button>
       </div>
       <input type="number" min="0" ${isReadOnly ? 'disabled' : ''} value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItemPrice(${index}, this.value)" class="mt-3 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 sm:text-base disabled:opacity-60" placeholder="아이템 가격 (메소)" />
+      <p id="dailyItemPricePreview${index}" class="mt-2 text-sm font-semibold text-amber-200">${item.price ? escapeHtml(formatKoreanMeso(item.price)) : '금액을 입력하면 만·억 단위로 표시돼요.'}</p>
     </div>`;
   }).join('') || '<p class="text-[11px] text-slate-500">+ 아이템을 눌러 드랍 아이템을 추가하세요.</p>';
 }
@@ -847,6 +864,8 @@ function addDailyItem() {
 function updateDailyItemPrice(index, value) {
   if (isViewingOtherAccount()) return;
   if (dailyItemDraft[index]) dailyItemDraft[index].price = value;
+  const preview = document.getElementById(`dailyItemPricePreview${index}`);
+  if (preview) preview.textContent = value ? formatKoreanMeso(value) : '금액을 입력하면 만·억 단위로 표시돼요.';
 }
 
 function openDailyItemCatalog(index) {
@@ -1018,6 +1037,31 @@ function getDailyLogTotal(log) {
   return { bossIncome, itemIncome, mesoIncome, total: bossIncome + itemIncome + mesoIncome };
 }
 
+function formatCompactMeso(value) {
+  const amount = Math.max(0, Number(value) || 0);
+  if (amount >= 1_000_000_000_000) return `${(amount / 1_000_000_000_000).toFixed(1).replace(/\.0$/, '')}조`;
+  if (amount >= 100_000_000) return `${(amount / 100_000_000).toFixed(1).replace(/\.0$/, '')}억`;
+  if (amount >= 10_000) return `${Math.round(amount / 10_000).toLocaleString()}만`;
+  return Math.round(amount).toLocaleString();
+}
+
+function formatKoreanMeso(value) {
+  let amount = Math.max(0, Math.floor(Number(value) || 0));
+  if (!amount) return '0 메소';
+  const parts = [];
+  const jo = Math.floor(amount / 1_000_000_000_000);
+  amount %= 1_000_000_000_000;
+  const eok = Math.floor(amount / 100_000_000);
+  amount %= 100_000_000;
+  const man = Math.floor(amount / 10_000);
+  amount %= 10_000;
+  if (jo) parts.push(`${jo.toLocaleString()}조`);
+  if (eok) parts.push(`${eok.toLocaleString()}억`);
+  if (man) parts.push(`${man.toLocaleString()}만`);
+  if (amount) parts.push(`${amount.toLocaleString()}`);
+  return `${parts.join(' ')} 메소 · ${Math.floor(Number(value)).toLocaleString()} 메소`;
+}
+
 function renderMonthlySummary() {
   const monthPrefix = selectedCalendarDate.slice(0, 7);
   const logs = getDailyLogs();
@@ -1032,16 +1076,11 @@ function renderMonthlySummary() {
     bossTotal += totals.bossIncome;
     itemTotal += totals.itemIncome;
     mesoTotal += totals.mesoIncome;
-    const bossEntries = Array.isArray(log.bosses) && log.bosses.length
-      ? log.bosses
-      : (log.bossId ? [{ bossId: log.bossId }] : []);
-    const bossNames = bossEntries.map(entry => BOSS_LIST.find(item => item.id === (typeof entry === 'string' ? entry : entry.bossId)))
-      .filter(Boolean).map(boss => `${boss.name} ${boss.diff}`).join(', ');
     const itemNames = (log.items || []).map(item => item.name).filter(Boolean).join(', ');
-    const description = [bossNames, itemNames].filter(Boolean).join(' · ');
+    const description = itemNames;
     return `<div class="flex flex-col gap-1 rounded-lg border border-slate-700/70 bg-slate-800/50 p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3"><span class="min-w-0 text-sm leading-5 text-slate-200">${Number(date.slice(-2))}일${description ? ` · ${escapeHtml(description)}` : ''}</span><strong class="shrink-0 text-sm text-emerald-300">${Math.round(totals.total).toLocaleString()} 메소</strong></div>`;
   });
   document.getElementById('monthlyTotal').textContent = `${Math.round(bossTotal + itemTotal + mesoTotal).toLocaleString()} 메소`;
-  document.getElementById('monthlyBreakdown').textContent = `보스 ${Math.round(bossTotal).toLocaleString()} + 아이템 ${Math.round(itemTotal).toLocaleString()} + 메소 ${Math.round(mesoTotal).toLocaleString()}`;
+  document.getElementById('monthlyBreakdown').textContent = `보스 수입 합계 ${Math.round(bossTotal).toLocaleString()} · 아이템 ${Math.round(itemTotal).toLocaleString()} · 사냥 메소 ${Math.round(mesoTotal).toLocaleString()}`;
   document.getElementById('monthlyRecordsList').innerHTML = rows.join('') || '<p class="text-slate-500">이번 달 기록이 아직 없어요.</p>';
 }

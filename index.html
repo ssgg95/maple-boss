@@ -144,12 +144,12 @@
         <!-- 날짜 그리드 -->
         <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-center sm:gap-2"></div>
 
-        <section class="mt-4 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
-          <h3 id="sundayMapleTitle" class="text-sm font-bold text-violet-200">이번 주 썬데이 메이플</h3>
-          <p id="sundayMapleSummary" class="mt-1 text-xs text-slate-300">일정을 불러오는 중...</p>
+        <details class="mt-4 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
+          <summary class="cursor-pointer text-sm font-bold text-violet-200"><span id="sundayMapleTitle">이번 주 썬데이 메이플</span><span class="ml-2 text-xs font-normal text-violet-300">이벤트 보기</span></summary>
+          <p id="sundayMapleSummary" class="mt-2 text-xs text-slate-300">일정을 불러오는 중...</p>
           <img id="sundayMapleImage" class="hidden mt-2 w-full max-h-[70vh] rounded-md object-contain bg-slate-900/50" alt="썬데이 메이플 이벤트 내용" />
           <a id="sundayMapleLink" class="mt-2 inline-block text-xs text-sky-300 underline" href="https://maplestory.nexon.com/News/Event" target="_blank" rel="noopener noreferrer">넥슨 공식 이벤트 공지 보기 ↗</a>
-        </section>
+        </details>
 
         <section class="mt-4 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
           <h3 id="dailyLogTitle" class="text-base font-bold text-amber-200 sm:text-lg">날짜별 획득 기록</h3>
