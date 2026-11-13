@@ -64,7 +64,7 @@ async function searchAccount(overrideName) {
         .select('settings_json')
         .eq('username', viewedOwner)
         .single();
-      bossSettings = settingRow?.settings_json || {};
+      bossSettings = normalizeBossSettings(settingRow?.settings_json || {});
     } else {
       bossSettings = {};
     }
@@ -142,29 +142,44 @@ function renderBossList() {
 
   document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 주간 보스 설정`;
 
-  grid.innerHTML = BOSS_LIST.map(boss => {
-    const isChecked = charBosses[boss.id] !== undefined;
-    const partySize = charBosses[boss.id] || 1;
-    const myShare = Math.floor(boss.price / partySize);
+  grid.innerHTML = getBossGroups().map(group => {
+    const selectedBoss = group.find(boss => charBosses[boss.id] !== undefined);
+    const isChecked = Boolean(selectedBoss);
+    const selectedPartySize = selectedBoss ? charBosses[selectedBoss.id] : 1;
+    const myShare = selectedBoss
+      ? Math.floor(selectedBoss.price / selectedPartySize)
+      : null;
     const disabled = isReadOnly || (!isChecked && totalCount >= 90);
 
     return `
-      <div class="flex items-center justify-between bg-slate-900/70 border ${isChecked ? 'border-amber-500/50' : 'border-slate-700/70'} rounded-lg px-3 py-2">
-        <label class="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+      <div class="flex items-center justify-between gap-3 bg-slate-900/70 border ${isChecked ? 'border-amber-500/50' : 'border-slate-700/70'} rounded-lg px-3 py-2">
+        <div class="flex items-start gap-2.5 flex-1 min-w-0">
           <input type="checkbox" ${isChecked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
-            onchange="toggleBoss('${boss.id}', this.checked)"
-            class="w-4 h-4 accent-amber-500 rounded" />
-          <div class="truncate">
-            <span class="text-sm font-medium ${isChecked ? 'text-white' : 'text-slate-400'}">${boss.name}</span>
-            <span class="text-[11px] ml-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">${boss.diff}</span>
-            <div class="text-xs text-amber-400/90 font-mono">${myShare.toLocaleString()} 메소</div>
+            aria-label="${group[0].name} 선택"
+            onchange="toggleBoss('${group[0].id}', this.checked)"
+            class="w-4 h-4 mt-1 accent-amber-500 rounded" />
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium ${isChecked ? 'text-white' : 'text-slate-400'}">${group[0].name}</div>
+            <div class="flex flex-wrap gap-1.5 mt-1.5">
+              ${group.map(boss => `
+                <button type="button" ${disabled ? 'disabled' : ''}
+                  onclick="selectBossDifficulty('${boss.id}')"
+                  aria-pressed="${selectedBoss?.id === boss.id}"
+                  class="px-2 py-1 text-[11px] rounded-md border transition disabled:opacity-40 ${selectedBoss?.id === boss.id ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'}">
+                  ${boss.diff}
+                </button>
+              `).join('')}
+            </div>
+            <div class="text-xs text-amber-400/90 font-mono mt-1">
+              ${selectedBoss ? `${myShare.toLocaleString()} 메소` : '난이도를 선택하세요'}
+            </div>
           </div>
-        </label>
+        </div>
 
         <select ${!isChecked || isReadOnly ? 'disabled' : ''}
-          onchange="changePartySize('${boss.id}', this.value)"
+          onchange="changePartySize('${selectedBoss?.id || group[0].id}', this.value)"
           class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 disabled:opacity-40">
-          ${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${partySize == n ? 'selected' : ''}>${n}인 (1/${n})</option>`).join('')}
+          ${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${selectedPartySize == n ? 'selected' : ''}>${n}인 (1/${n})</option>`).join('')}
         </select>
       </div>
     `;
@@ -173,12 +188,37 @@ function renderBossList() {
 
 function toggleBoss(bossId, checked) {
   if (!bossSettings[activeCharName]) bossSettings[activeCharName] = {};
+  const boss = BOSS_LIST.find(item => item.id === bossId);
+  if (!boss) return;
+  const group = BOSS_LIST.filter(item => item.name === boss.name);
+  const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
+
   if (checked) {
-    if (getTotalCrystalCount() >= 90) return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
+    if (!existingBoss && getTotalCrystalCount() >= 90) return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
+    group.forEach(item => delete bossSettings[activeCharName][item.id]);
     bossSettings[activeCharName][bossId] = 1;
   } else {
-    delete bossSettings[activeCharName][bossId];
+    group.forEach(item => delete bossSettings[activeCharName][item.id]);
   }
+  renderCharacterTabs();
+  renderBossList();
+  calculateSummary();
+}
+
+function selectBossDifficulty(bossId) {
+  if (!bossSettings[activeCharName]) bossSettings[activeCharName] = {};
+  const boss = BOSS_LIST.find(item => item.id === bossId);
+  if (!boss) return;
+
+  const group = BOSS_LIST.filter(item => item.name === boss.name);
+  const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
+  if (!existingBoss && getTotalCrystalCount() >= 90) {
+    return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
+  }
+
+  const partySize = existingBoss ? bossSettings[activeCharName][existingBoss.id] : 1;
+  group.forEach(item => delete bossSettings[activeCharName][item.id]);
+  bossSettings[activeCharName][bossId] = partySize;
   renderCharacterTabs();
   renderBossList();
   calculateSummary();
@@ -199,6 +239,46 @@ function getTotalCrystalCount() {
     count += Object.keys(charObj).length;
   });
   return count;
+}
+
+function getBossGroups() {
+  const groups = new Map();
+  BOSS_LIST.forEach(boss => {
+    if (!groups.has(boss.name)) groups.set(boss.name, []);
+    groups.get(boss.name).push(boss);
+  });
+  return Array.from(groups.values());
+}
+
+// 기존 저장값에 같은 보스의 여러 난이도가 들어 있으면 보상이 가장 높은 하나로 정리합니다.
+function normalizeBossSettings(settings) {
+  const normalized = {};
+  const bossById = Object.fromEntries(BOSS_LIST.map(boss => [boss.id, boss]));
+
+  Object.entries(settings || {}).forEach(([charName, savedBosses]) => {
+    const selectedByBossName = new Map();
+    const unknownBosses = {};
+
+    Object.entries(savedBosses || {}).forEach(([bossId, partySize]) => {
+      const boss = bossById[bossId];
+      if (!boss) {
+        unknownBosses[bossId] = partySize;
+        return;
+      }
+
+      const previous = selectedByBossName.get(boss.name);
+      if (!previous || boss.price > previous.boss.price) {
+        selectedByBossName.set(boss.name, { boss, partySize });
+      }
+    });
+
+    normalized[charName] = {
+      ...unknownBosses,
+      ...Object.fromEntries(Array.from(selectedByBossName.values(), ({ boss, partySize }) => [boss.id, partySize]))
+    };
+  });
+
+  return normalized;
 }
 
 function calculateSummary() {
