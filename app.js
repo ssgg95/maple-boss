@@ -260,16 +260,23 @@ async function submitAuth() {
   if (authMode === 'signup') {
     if (!mainChar) return alert('대표 캐릭터 닉네임을 입력하세요.');
     
-    // 넥슨 API로 계정 내 모든 부캐 목록까지 함께 조회하여 DB에 저장
-    const mapleRes = await fetch(`/api/maple?name=${encodeURIComponent(mainChar)}`);
-    const mapleData = await mapleRes.json();
-    if (!mapleRes.ok) return alert(mapleData.error);
+    let characterNames = [mainChar];
+    try {
+      const mapleRes = await fetch(`/api/maple?name=${encodeURIComponent(mainChar)}`);
+      const text = await mapleRes.text();
+      const mapleData = JSON.parse(text);
+      if (mapleRes.ok && mapleData.allCharacterNames) {
+        characterNames = mapleData.allCharacterNames;
+      }
+    } catch (e) {
+      console.warn('부캐 자동 수집 중 경고 (대표 캐릭터만 등록됩니다):', e);
+    }
 
     const { error } = await supabaseClient.from('users').insert({
       username,
       password_hash,
       main_character: mainChar,
-      account_characters: mapleData.allCharacterNames
+      account_characters: characterNames
     });
 
     if (error) return alert('가입 실패 (중복된 아이디일 수 있습니다): ' + error.message);
