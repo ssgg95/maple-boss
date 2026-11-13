@@ -516,19 +516,32 @@ function initDailyLogControls() {
 }
 
 function renderDailyBossOptions() {
-  document.getElementById('dailyBossOptions').innerHTML = BOSS_LIST.map(boss => `
-    <label class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-slate-200 hover:bg-slate-700/70">
-      <input type="checkbox" ${dailyBossDraft.includes(boss.id) ? 'checked' : ''} onchange="toggleDailyBoss('${boss.id}', this.checked)" class="accent-amber-500" />
-      <span>${boss.name} ${boss.diff}</span>
-      <span class="ml-auto text-slate-400">${boss.price.toLocaleString()}</span>
-    </label>
+  const groups = new Map();
+  BOSS_LIST.forEach(boss => {
+    if (!groups.has(boss.name)) groups.set(boss.name, []);
+    groups.get(boss.name).push(boss);
+  });
+  document.getElementById('dailyBossOptions').innerHTML = Array.from(groups.values()).map(group => `
+    <div class="rounded border border-slate-700/70 bg-slate-900/30 p-1.5">
+      <div class="mb-1 text-[11px] font-semibold text-slate-300">${group[0].name}</div>
+      <div class="flex flex-wrap gap-1">
+        ${group.map(boss => {
+          const isSelected = dailyBossDraft.includes(boss.id);
+          return `<button type="button" aria-pressed="${isSelected}" onclick="toggleDailyBoss('${boss.id}')" class="rounded border px-2 py-1 text-[10px] ${isSelected ? 'border-amber-400 bg-amber-500/20 text-amber-200' : 'border-slate-600 bg-slate-800 text-slate-300 hover:border-slate-400'}">
+            ${boss.diff} · ${boss.price.toLocaleString()}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
   `).join('');
 }
 
-function toggleDailyBoss(bossId, checked) {
-  dailyBossDraft = checked
-    ? [...new Set([...dailyBossDraft, bossId])]
-    : dailyBossDraft.filter(id => id !== bossId);
+function toggleDailyBoss(bossId) {
+  const boss = BOSS_LIST.find(item => item.id === bossId);
+  if (!boss) return;
+  const alreadySelected = dailyBossDraft.includes(bossId);
+  dailyBossDraft = dailyBossDraft.filter(id => BOSS_LIST.find(item => item.id === id)?.name !== boss.name);
+  if (!alreadySelected) dailyBossDraft.push(bossId);
   renderDailyBossOptions();
   updateDailyBossPreview();
 }
