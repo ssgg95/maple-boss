@@ -21,6 +21,46 @@ const SUNDAY_MAPLE_EVENTS = {
     url: 'https://maplestory.nexon.com/News/Event/1409'
   }
 };
+const MAPLESTORY_DATA_VERSION = '388';
+const BOSS_DROP_CATALOG = [
+  { group: '칠흑의 보스 장신구', items: [
+    { id: 1012632, name: '루즈 컨트롤 머신 마크' },
+    { id: 1022278, name: '마력이 깃든 안대' },
+    { id: 1132308, name: '몽환의 벨트' },
+    { id: 1032316, name: '커맨더 포스 이어링' },
+    { id: 1122430, name: '고통의 근원' },
+    { id: 1113306, name: '거대한 공포' },
+    { id: 1182285, name: '창세의 뱃지' },
+    { id: 1162080, name: '저주받은 적의 마도서' },
+    { id: 1190555, name: '미트라의 분노 : 전사' },
+    { id: 1672076, name: '블랙 하트' }
+  ] },
+  { group: '보스 장신구', items: [
+    { id: 1113313, name: '가디언 엔젤 링' },
+    { id: 1122443, name: '데이브레이크 펜던트' },
+    { id: 1032330, name: '에스텔라 이어링' },
+    { id: 1122150, name: '도미네이터 펜던트' },
+    { id: 1022277, name: '파풀라투스 마크' },
+    { id: 1022232, name: '블랙빈 마크' },
+    { id: 1012478, name: '응축된 힘의 결정석' },
+    { id: 1022231, name: '아쿠아틱 레터 눈장식' },
+    { id: 1032241, name: '데아 시두스 이어링' }
+  ] },
+  { group: '소비 · 성장 아이템', items: [
+    { id: 2003551, name: '재물 획득의 비약' },
+    { id: 2539001, name: '생명의 연마석' },
+    { id: 4009547, name: '솔 에르다 조각' },
+    { id: 2048717, name: '영원한 환생의 불꽃' },
+    { id: 2048716, name: '강력한 환생의 불꽃' },
+    { id: 2433103, name: '보스 명예의 훈장' },
+    { id: 2436499, name: '수상한 큐브' },
+    { id: 2730000, name: '수상한 에디셔널 큐브' }
+  ] }
+];
+
+function getMapleItemIconUrl(itemId) {
+  return `https://maplestory.io/api/KMS/${MAPLESTORY_DATA_VERSION}/item/${itemId}/icon`;
+}
 
 // 초기화 실행
 document.addEventListener('DOMContentLoaded', () => {
@@ -677,7 +717,9 @@ function selectCalendarDate(dateKey) {
 function renderDailyItemRows(items) {
   const rows = items.length ? items : [];
   document.getElementById('dailyItemRows').innerHTML = rows.map((item, index) => {
-    const imageUrl = /^https:\/\//i.test(item.image || '') ? item.image : '';
+    const imageUrl = /^https:\/\//i.test(item.image || '')
+      ? item.image.replace('/KMS/latest/', `/KMS/${MAPLESTORY_DATA_VERSION}/`)
+      : '';
     return `<div class="rounded-md border border-slate-700 bg-slate-800/70 p-2">
       <div class="flex gap-2">
         <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-900 text-xl">
@@ -686,7 +728,7 @@ function renderDailyItemRows(items) {
         </div>
         <div class="min-w-0 flex-1 space-y-1">
           <input value="${escapeHtml(item.name || '')}" oninput="updateDailyItem(${index}, 'name', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs" placeholder="아이템 검색 (예: 생명의 연마석)" />
-          <div id="dailyItemSearch${index}" class="max-h-28 space-y-1 overflow-y-auto"></div>
+          <div id="dailyItemSearch${index}" class="mt-1 max-h-64 overflow-y-auto rounded-md">${item.name ? '' : renderBossDropCatalog(index)}</div>
           <input value="${escapeHtml(item.image || '')}" oninput="updateDailyItem(${index}, 'image', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-[10px]" placeholder="아이템 이미지 URL (선택)" />
         </div>
         <button onclick="removeDailyItem(${index})" class="self-start px-1 text-slate-400 hover:text-rose-300" aria-label="아이템 삭제">✕</button>
@@ -702,6 +744,24 @@ function escapeHtml(value) {
 
 let dailyItemDraft = [];
 const dailyItemSearchTimers = {};
+
+function renderBossDropCatalog(index) {
+  return `<div class="space-y-2 rounded-md border border-slate-700 bg-slate-900/70 p-2">
+    <p class="text-[10px] text-slate-400">아이콘을 눌러 아이템을 선택하거나 이름을 검색하세요.</p>
+    ${BOSS_DROP_CATALOG.map(group => `<section>
+      <h4 class="mb-1 text-[10px] font-semibold text-violet-200">${group.group}</h4>
+      <div class="grid grid-cols-5 gap-1">${group.items.map(item => {
+        const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
+        return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center gap-0.5 rounded border border-slate-700 bg-slate-800 p-1 hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-400">
+          <span class="hidden h-8 w-8 items-center justify-center text-base">🎁</span>
+          <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-8 w-8 object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
+          <span class="w-full truncate text-[8px] leading-tight text-slate-300">${escapeHtml(item.name)}</span>
+        </button>`;
+      }).join('')}</div>
+    </section>`).join('')}
+  </div>`;
+}
+
 function addDailyItem() {
   dailyItemDraft.push({ name: '', image: '', price: '' });
   renderDailyItemRows(dailyItemDraft);
@@ -725,7 +785,7 @@ function updateDailyItem(index, field, value) {
     clearTimeout(dailyItemSearchTimers[index]);
     const results = document.getElementById(`dailyItemSearch${index}`);
     if (value.trim().length < 2) {
-      results.innerHTML = '';
+      results.innerHTML = renderBossDropCatalog(index);
       return;
     }
     results.innerHTML = '<span class="text-[10px] text-slate-400">한국어 아이템 이름과 아이콘을 검색 중...</span>';
@@ -737,18 +797,24 @@ async function searchDailyItemCatalog(index, query) {
   const results = document.getElementById(`dailyItemSearch${index}`);
   if (!results) return;
   try {
-    const url = `https://maplestory.io/api/KMS/latest/item/list?searchFor=${encodeURIComponent(query)}&count=8`;
+    const url = `https://maplestory.io/api/KMS/${MAPLESTORY_DATA_VERSION}/item/list?searchFor=${encodeURIComponent(query)}&count=8`;
     const response = await fetch(url);
     if (!response.ok) throw new Error('아이템 검색에 실패했습니다.');
     const payload = await response.json();
     const items = Array.isArray(payload)
       ? payload
       : [payload.items, payload.results, payload.data].find(Array.isArray) || [];
-    const matches = items.map(item => ({
+    const apiMatches = items.map(item => ({
       id: Number(item.id ?? item.itemId ?? item.item_id ?? item.ItemId),
       name: item.name ?? item.itemName ?? item.item_name ?? item.ItemName
     })).filter(item => Number.isInteger(item.id) && item.name);
-    if (dailyItemDraft[index]?.name !== query || dailyItemDraft[index]?.itemId) return;
+    const normalizedQuery = query.replace(/\s/g, '').toLowerCase();
+    const catalogMatches = BOSS_DROP_CATALOG.flatMap(group => group.items)
+      .filter(item => item.name.replace(/\s/g, '').toLowerCase().includes(normalizedQuery));
+    const matches = [...catalogMatches, ...apiMatches]
+      .filter((item, position, all) => all.findIndex(candidate => candidate.id === item.id) === position)
+      .slice(0, 12);
+    if (dailyItemDraft[index]?.name?.trim() !== query || dailyItemDraft[index]?.itemId) return;
 
     if (!matches.length) {
       results.innerHTML = '<span class="text-[10px] text-slate-400">검색 결과가 없어요. 아이템 이름을 직접 입력할 수 있습니다.</span>';
@@ -758,7 +824,7 @@ async function searchDailyItemCatalog(index, query) {
       const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
       return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center gap-1 rounded-md border border-slate-600 bg-slate-800 p-1.5 text-center hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400">
         <span class="hidden h-10 w-10 items-center justify-center text-lg">🎁</span>
-        <img src="https://maplestory.io/api/KMS/latest/item/${item.id}/icon" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-10 w-10 cursor-pointer object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
+        <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-10 w-10 cursor-pointer object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
         <span class="w-full truncate text-[10px] leading-tight text-slate-200">${escapeHtml(item.name)}</span>
       </button>`;
     }).join('')}</div><p class="mt-1 text-[9px] text-slate-500">아이콘을 누르면 한국어 아이템 이름과 이미지가 입력돼요.</p>`;
@@ -774,7 +840,7 @@ function selectDailyItem(index, itemId, encodedName) {
     ...dailyItemDraft[index],
     name,
     itemId,
-    image: `https://maplestory.io/api/KMS/latest/item/${itemId}/icon`
+    image: getMapleItemIconUrl(itemId)
   };
   renderDailyItemRows(dailyItemDraft);
 }
