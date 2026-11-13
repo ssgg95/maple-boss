@@ -106,7 +106,7 @@ function renderTop5Cards() {
     <div onclick="selectCharacterTab('${char.name}')"
       class="cursor-pointer bg-slate-800 border ${char.name === activeCharName ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-700'} rounded-xl p-3 flex flex-col items-center text-center transition hover:border-slate-500">
       <span class="self-start text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700 text-amber-300">TOP ${idx + 1}</span>
-      <img src="${char.image}" alt="${char.name}" class="w-28 h-28 object-contain my-1 scale-110" />
+      <img src="${char.image}" alt="${char.name}" class="w-40 h-40 object-contain my-1 scale-110" />
       <div class="font-bold text-sm text-slate-100 mt-1">${char.name}</div>
       <div class="text-xs text-slate-400">Lv.${char.level} · ${char.world}</div>
       <div class="text-[11px] text-indigo-300 mt-0.5 truncate w-full">${char.job}</div>
