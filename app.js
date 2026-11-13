@@ -23,6 +23,15 @@ const SUNDAY_MAPLE_EVENTS = {
 };
 const MAPLESTORY_DATA_VERSION = '388';
 const BOSS_DROP_CATALOG = [
+  { group: '익셉셔널 해머', items: [
+    { id: null, name: '익셉셔널 해머 (얼굴장식)', image: getHostedItemIconUrl('그외', '익셉셔널 해머 (얼굴장식)') },
+    { id: null, name: '익셉셔널 해머 (눈장식)', image: getHostedItemIconUrl('그외', '익셉셔널 해머 (눈장식)') },
+    { id: null, name: '익셉셔널 해머 (벨트)', image: getHostedItemIconUrl('그외', '익셉셔널 해머 (벨트)') },
+    { id: null, name: '익셉셔널 해머 (귀고리)', image: getHostedItemIconUrl('그외', '익셉셔널 해머 (귀고리)') },
+    { id: null, name: '익셉셔널 해머 (훈장)', image: getHostedItemIconUrl('그외', '익셉셔널 해머 (훈장)') },
+    { id: null, name: '익셉셔널 해머 (포켓)' },
+    { id: null, name: '익셉셔널 해머 (펜던트)' }
+  ] },
   { group: '광휘의 보스 장비', items: [
     { id: null, name: '근원의 속삭임', image: 'https://mitemprice.kr/image/칠흑/근원의%20속삭임.png' },
     { id: null, name: '황홀한 악몽', image: 'https://mitemprice.kr/image/칠흑/황홀한%20악몽.png' },
@@ -43,16 +52,9 @@ const BOSS_DROP_CATALOG = [
     { id: 1190555, name: '미트라의 분노 : 전사' },
     { id: 1672076, name: '블랙 하트' }
   ] },
-  { group: '보스 장신구', items: [
-    { id: 1113313, name: '가디언 엔젤 링' },
-    { id: 1122443, name: '데이브레이크 펜던트' },
-    { id: 1032330, name: '에스텔라 이어링' },
-    { id: 1122150, name: '도미네이터 펜던트' },
-    { id: 1022277, name: '파풀라투스 마크' },
-    { id: 1022232, name: '블랙빈 마크' },
-    { id: 1012478, name: '응축된 힘의 결정석' },
-    { id: 1022231, name: '아쿠아틱 레터 눈장식' },
-    { id: 1032241, name: '데아 시두스 이어링' }
+  { group: '시드링 (4레벨)', items: [
+    { id: 1113098, name: '리스트레인트 링 4레벨' },
+    { id: 1113329, name: '컨티뉴어스 링 4레벨' }
   ] },
   { group: '연마석', items: [
     { id: 2539001, name: '생명의 연마석' },
@@ -62,6 +64,10 @@ const BOSS_DROP_CATALOG = [
 
 function getMapleItemIconUrl(itemId) {
   return `https://maplestory.io/api/KMS/${MAPLESTORY_DATA_VERSION}/item/${itemId}/icon`;
+}
+
+function getHostedItemIconUrl(folder, name) {
+  return `https://mitemprice.kr/image/${encodeURIComponent(folder)}/${encodeURIComponent(`${name}.png`)}`;
 }
 
 // 초기화 실행
@@ -768,7 +774,7 @@ function renderItemCatalogTile(item) {
     ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-16 w-16 object-contain sm:h-20 sm:w-20" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />`
     : '';
   return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${activeItemCatalogIndex}, ${itemId}, '${encodedName}', '${encodeURIComponent(imageUrl)}')" class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 p-3 text-center transition hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:p-4">
-    <span class="hidden h-16 w-16 items-center justify-center text-3xl sm:h-20 sm:w-20">🎁</span>
+    <span class="${imageUrl ? 'hidden' : 'flex'} h-16 w-16 items-center justify-center text-3xl sm:h-20 sm:w-20">${item.name.startsWith('익셉셔널 해머') ? '🔨' : '🎁'}</span>
     ${imageMarkup}
     <span class="line-clamp-2 min-h-10 w-full text-xs font-medium leading-5 text-slate-100 sm:text-sm">${escapeHtml(item.name)}</span>
   </button>`;
