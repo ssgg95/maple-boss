@@ -571,6 +571,8 @@ function openAuthModal(mode) {
   authMode = mode;
   document.getElementById('modalTitle').textContent = mode === 'login' ? '로그인' : '초간단 회원가입 (인증 없음)';
   document.getElementById('signupCharField').classList.toggle('hidden', mode === 'login');
+  document.getElementById('policyConsentField').classList.toggle('hidden', mode === 'login');
+  document.getElementById('policyConsent').checked = false;
   document.getElementById('authModal').classList.remove('hidden');
 }
 
@@ -587,6 +589,7 @@ async function submitAuth() {
   const password_hash = await hashPassword(password);
 
   if (authMode === 'signup') {
+    if (!document.getElementById('policyConsent').checked) return alert('회원가입을 계속하려면 이용약관에 동의해 주세요.');
     if (!mainChar) return alert('대표 캐릭터 닉네임을 입력하세요.');
     
     // 넥슨 API 호출 및 방어 코드 (JSON 파싱 에러 방지)
@@ -638,12 +641,60 @@ function logout() {
   showHome();
 }
 
+async function withdrawAccount() {
+  if (!currentUser) return;
+  const password = prompt('본인 확인을 위해 비밀번호를 입력해 주세요.');
+  if (password === null) return;
+  if (!password) return alert('비밀번호를 입력해 주세요.');
+
+  const username = currentUser.username;
+  const passwordHash = await hashPassword(password);
+  const { data: verifiedUser, error: verifyError } = await supabaseClient
+    .from('users')
+    .select('username')
+    .eq('username', username)
+    .eq('password_hash', passwordHash)
+    .single();
+  if (verifyError || !verifiedUser) return alert('비밀번호가 맞지 않거나 계정을 확인할 수 없습니다.');
+
+  if (!confirm('회원탈퇴하면 서버에 저장된 보스 설정과 날짜별 기록이 삭제됩니다. 탈퇴할까요?')) return;
+
+  const { error: settingsError } = await supabaseClient
+    .from('boss_settings')
+    .delete()
+    .eq('username', username);
+  if (settingsError) return alert(`저장 기록 삭제 실패: ${settingsError.message}`);
+
+  const { data: deletedUsers, error: userError } = await supabaseClient
+    .from('users')
+    .delete()
+    .eq('username', username)
+    .eq('password_hash', passwordHash)
+    .select('username');
+  if (userError || !deletedUsers?.length) {
+    return alert(`회원정보를 삭제하지 못했습니다.${userError ? ` ${userError.message}` : ' Supabase 삭제 권한 설정을 확인해 주세요.'}`);
+  }
+
+  localStorage.removeItem('maple_user');
+  localStorage.removeItem('maple_daily_loot_logs');
+  localStorage.removeItem(`maple_daily_boss_clears_${encodeURIComponent(username)}`);
+  currentUser = null;
+  viewedOwner = null;
+  bossSettings = {};
+  dailyBossClearStatus = {};
+  dailyLootLogs = {};
+  updateAuthUI();
+  showHome();
+  alert('회원탈퇴가 완료됐고 계정의 서버 저장 기록을 삭제했습니다.');
+}
+
 function updateAuthUI() {
   const area = document.getElementById('authArea');
   if (currentUser) {
     area.innerHTML = `
       <span class="text-slate-300 font-medium">👋 ${currentUser.username}님</span>
       <button onclick="searchAccount('${currentUser.main_character}')" class="bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-xs">내 계정</button>
+      <button onclick="withdrawAccount()" class="bg-slate-700 hover:bg-rose-700 px-2.5 py-1 rounded text-xs text-rose-200">회원탈퇴</button>
       <button onclick="logout()" class="bg-rose-600/80 hover:bg-rose-600 px-2.5 py-1 rounded text-xs">로그아웃</button>
     `;
   } else {

@@ -3,7 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>메짱이</title>
+  <title>메짱이 - 메이플스토리 보스 수익 계산·기록</title>
+  <meta name="description" content="메짱이에서 메이플스토리 캐릭터를 검색하고 주간 보스 수익, 보스 클리어, 드랍 아이템과 사냥 메소를 한눈에 기록하세요." />
+  <meta name="keywords" content="메짱이, 메이플스토리, 메이플 보스 수익 계산기, 메이플 보스 기록, 메이플 사냥 메소" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <link rel="canonical" href="https://maple-boss-gamma.vercel.app/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ko_KR" />
+  <meta property="og:site_name" content="메짱이" />
+  <meta property="og:title" content="메짱이 - 메이플스토리 보스 수익 계산·기록" />
+  <meta property="og:description" content="메이플스토리 캐릭터별 보스 수익과 날짜별 아이템·사냥 메소를 기록하는 무료 비공식 도구." />
+  <meta property="og:url" content="https://maple-boss-gamma.vercel.app/" />
+  <meta name="twitter:card" content="summary" />
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"WebSite","name":"메짱이","url":"https://maple-boss-gamma.vercel.app/","description":"메이플스토리 캐릭터별 보스 수익과 날짜별 아이템·사냥 메소를 기록하는 무료 비공식 도구.","inLanguage":"ko-KR"}
+  </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -200,6 +214,16 @@
 
   </main>
 
+  <footer class="border-t border-slate-700 bg-slate-950/70">
+    <div class="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-sm text-slate-400">
+      <span>메짱이 · 문의 <a class="text-sky-300 hover:underline" href="mailto:stuckj1601@gmail.com">stuckj1601@gmail.com</a></span>
+      <nav class="flex flex-wrap gap-4" aria-label="정책 및 안내">
+        <a class="hover:text-slate-100 hover:underline" href="/terms.html">이용약관</a>
+        <a class="hover:text-slate-100 hover:underline" href="/privacy.html">개인정보 처리방침</a>
+      </nav>
+    </div>
+  </footer>
+
   <!-- 넓은 보스 드랍 아이템 선택 갤러리 -->
   <div id="itemCatalogModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3 sm:p-6" onclick="if (event.target === this) closeDailyItemCatalog()">
     <section class="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-600 bg-slate-900 shadow-2xl">
@@ -236,6 +260,10 @@
         <div id="signupCharField" class="hidden">
           <label class="text-xs text-slate-400 block mb-1">대표 캐릭터 닉네임 (부캐도 가능)</label>
           <input id="authMainChar" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm" placeholder="메이플 닉네임 입력" />
+        </div>
+        <div id="policyConsentField" class="hidden space-y-2 text-xs leading-5 text-slate-300">
+          <label class="flex items-start gap-2"><input id="policyConsent" type="checkbox" class="mt-1 accent-amber-500" /><span><a href="/terms.html" target="_blank" rel="noopener noreferrer" class="text-sky-300 underline">이용약관</a>에 동의합니다.</span></label>
+          <p><a href="/privacy.html" target="_blank" rel="noopener noreferrer" class="text-sky-300 underline">개인정보 처리방침</a>을 확인해 주세요.</p>
         </div>
       </div>
       <button id="authSubmitBtn" type="submit" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-2 rounded-lg text-sm">
