@@ -4,14 +4,43 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const searchCache = new Map();
+
+function readSearchCache(key) {
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    searchCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeSearchCache(key, value) {
+  // 서버리스 인스턴스가 오래 유지되어도 캐시가 무한히 커지지 않게 제한합니다.
+  if (searchCache.size >= 500) {
+    const oldestKey = searchCache.keys().next().value;
+    if (oldestKey) searchCache.delete(oldestKey);
+  }
+  searchCache.set(key, { value, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  const { name } = req.query;
+  const rawName = req.query.name;
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
   if (!name) {
     return res.status(400).json({ error: '캐릭터 닉네임이 입력되지 않았습니다.' });
+  }
+
+  const cacheKey = name.toLocaleLowerCase('ko-KR');
+  const cachedResult = readSearchCache(cacheKey);
+  if (cachedResult) {
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+    return res.status(200).json(cachedResult);
   }
 
   const NEXON_API_KEY = process.env.NEXON_API_KEY;
@@ -23,13 +52,20 @@ export default async function handler(req, res) {
     // 넥슨 API 요청을 한꺼번에 보내면 일부 캐릭터 조회가 실패할 수 있어
     // 호출 간격을 두고 429/일시 오류는 재시도합니다.
     let lastNexonRequestAt = 0;
+    let requestSchedule = Promise.resolve();
+    const scheduleNexonRequest = () => {
+      const scheduled = requestSchedule.then(async () => {
+        const waitMs = Math.max(0, 350 - (Date.now() - lastNexonRequestAt));
+        if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+        lastNexonRequestAt = Date.now();
+      });
+      requestSchedule = scheduled.catch(() => {});
+      return scheduled;
+    };
     const fetchNexon = async (url) => {
       let response;
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        const waitMs = Math.max(0, 350 - (Date.now() - lastNexonRequestAt));
-        if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
-
-        lastNexonRequestAt = Date.now();
+        await scheduleNexonRequest();
         response = await fetch(url, {
           headers: { 'x-nxopen-api-key': NEXON_API_KEY }
         });
@@ -118,38 +154,41 @@ export default async function handler(req, res) {
 
     // 4. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 순차 조회 (최대 10개)
     const candidateNames = characterNames.slice(0, 10);
-    const results = [];
-    for (const cName of candidateNames) {
+    const results = (await Promise.all(candidateNames.map(async (cName) => {
       try {
         const cOcidRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`);
-        if (!cOcidRes.ok) continue;
+        if (!cOcidRes.ok) return null;
         const { ocid: cOcid } = await cOcidRes.json();
 
         const basicRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${cOcid}`);
-        if (!basicRes.ok) continue;
+        if (!basicRes.ok) return null;
         const basic = await basicRes.json();
 
-        results.push({
+        return {
           name: basic.character_name,
           world: basic.world_name,
           job: basic.character_class,
           level: basic.character_level,
           image: basic.character_image
-        });
+        };
       } catch (e) {
         console.warn(`캐릭터 상세 조회 실패 (${cName}):`, e.message);
+        return null;
       }
-    }
+    }))).filter(Boolean);
 
     // 레벨 높은 순 정렬 후 상위 5개 추출 (또는 등록된 순서 유지)
     results.sort((a, b) => b.level - a.level);
     const top5 = results.slice(0, 5);
 
-    return res.status(200).json({
+    const result = {
       searchedName: name,
       top5: top5.length > 0 ? top5 : (unionChampionLookupSucceeded ? [] : [{ name, world: '-', job: '-', level: 0, image: '' }]),
       allCharacterNames: characterNames
-    });
+    };
+    writeSearchCache(cacheKey, result);
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+    return res.status(200).json(result);
 
   } catch (err) {
     return res.status(500).json({ error: '서버 내부 오류 발생', details: err.message });
