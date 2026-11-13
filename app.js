@@ -183,10 +183,11 @@ function selectCharacterTab(charName) {
 function renderBossList() {
   const grid = document.getElementById('bossListGrid');
   const charBosses = bossSettings[activeCharName] || {};
+  const characterCount = Object.keys(charBosses).length;
   const totalCount = getTotalCrystalCount();
   const isReadOnly = viewedOwner && (!currentUser || currentUser.username !== viewedOwner);
 
-  document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 주간 보스 설정`;
+  document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 주간 보스 설정 (${characterCount}/12)`;
 
   grid.innerHTML = getBossGroups().map(group => {
     const selectedBoss = group.find(boss => charBosses[boss.id] !== undefined);
@@ -195,7 +196,7 @@ function renderBossList() {
     const myShare = selectedBoss
       ? Math.floor(selectedBoss.price / selectedPartySize)
       : null;
-    const disabled = isReadOnly || (!isChecked && totalCount >= 90);
+    const disabled = isReadOnly || (!isChecked && (characterCount >= 12 || totalCount >= 90));
 
     return `
       <div class="flex items-center justify-between gap-3 bg-slate-900/70 border ${isChecked ? 'border-amber-500/50' : 'border-slate-700/70'} rounded-lg px-3 py-2">
@@ -240,7 +241,16 @@ function toggleBoss(bossId, checked) {
   const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
 
   if (checked) {
-    if (!existingBoss && getTotalCrystalCount() >= 90) return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
+    if (!existingBoss && Object.keys(bossSettings[activeCharName]).length >= 12) {
+      alert('캐릭터당 주간 보스는 최대 12개까지 선택할 수 있습니다.');
+      renderBossList();
+      return;
+    }
+    if (!existingBoss && getTotalCrystalCount() >= 90) {
+      alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
+      renderBossList();
+      return;
+    }
     group.forEach(item => delete bossSettings[activeCharName][item.id]);
     bossSettings[activeCharName][bossId] = 1;
   } else {
@@ -258,6 +268,10 @@ function selectBossDifficulty(bossId) {
 
   const group = BOSS_LIST.filter(item => item.name === boss.name);
   const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
+  if (!existingBoss && Object.keys(bossSettings[activeCharName]).length >= 12) {
+    alert('캐릭터당 주간 보스는 최대 12개까지 선택할 수 있습니다.');
+    return;
+  }
   if (!existingBoss && getTotalCrystalCount() >= 90) {
     return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
   }
