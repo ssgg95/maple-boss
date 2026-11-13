@@ -10,10 +10,21 @@ let top5Characters = [];       // 현재 화면의 상위 5개 캐릭터 배열
 let activeCharName = '';       // 현재 선택된 탭의 캐릭터 이름
 let bossSettings = {};         // { "캐릭터명": { "boss_id": 파티인원(1~6) } }
 let authMode = 'login';
+let selectedCalendarDate = toLocalDateKey(new Date());
+const DAILY_LOG_STORAGE_KEY = 'maple_daily_loot_logs';
+const SUNDAY_MAPLE_EVENTS = {
+  // 넥슨 공식 2026년 11월 15일 이벤트 안내 이미지
+  '2026-11-15': {
+    image: 'https://lwi.nexon.com/maplestory/2026/1022_board/261115_1K16FRPBN1G02THG.png',
+    url: 'https://maplestory.nexon.com/News/Event/1409'
+  }
+};
 
 // 초기화 실행
 document.addEventListener('DOMContentLoaded', () => {
+  initDailyLogControls();
   renderMiniCalendar();
+  selectCalendarDate(selectedCalendarDate);
   const savedUser = localStorage.getItem('maple_user');
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
@@ -106,7 +117,7 @@ function renderTop5Cards() {
     <div onclick="selectCharacterTab('${char.name}')"
       class="cursor-pointer bg-slate-800 border ${char.name === activeCharName ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-700'} rounded-xl p-3 flex flex-col items-center text-center transition hover:border-slate-500">
       <span class="self-start text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700 text-amber-300">TOP ${idx + 1}</span>
-      <img src="${char.image}" alt="${char.name}" class="w-40 h-40 object-contain my-1 scale-110" />
+      <img src="${char.image}" alt="${char.name}" class="w-64 h-64 max-w-full object-contain my-1 scale-110" />
       <div class="font-bold text-sm text-slate-100 mt-1">${char.name}</div>
       <div class="text-xs text-slate-400">Lv.${char.level} · ${char.world}</div>
       <div class="text-[11px] text-indigo-300 mt-0.5 truncate w-full">${char.job}</div>
@@ -415,47 +426,308 @@ function updateAuthUI() {
   }
 }
 
-// 9. 우측 미니 캘린더 렌더링 (일요일: 썬데이 메이플 / 목요일: 주간 보스·결정석 초기화)
-function renderMiniCalendar() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
+// 9. 우측 캘린더, 썬데이 메이플 및 날짜별 획득 기록
+function toLocalDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-  document.getElementById('calendarMonthTitle').textContent = `${year}년 ${month + 1}월`;
-
-  const firstDay = new Date(year, month, 1).getDay();
-  const lastDate = new Date(year, month + 1, 0).getDate();
-  const grid = document.getElementById('calendarGrid');
-
-  let html = '';
-  for (let i = 0; i < firstDay; i++) {
-    html += `<div></div>`;
+function getDailyLogs() {
+  try {
+    return JSON.parse(localStorage.getItem(DAILY_LOG_STORAGE_KEY) || '{}');
+  } catch {
+    return {};
   }
+}
 
-  for (let d = 1; d <= lastDate; d++) {
-    const dayOfWeek = new Date(year, month, d).getDay();
-    const isToday = d === today;
-    let badgeClass = 'bg-slate-700/40 text-slate-300';
-    let titleAttr = '';
+function initDailyLogControls() {
+  const bossSelect = document.getElementById('dailyBossSelect');
+  bossSelect.innerHTML = '<option value="">보스 선택 안 함</option>' + BOSS_LIST.map(boss =>
+    `<option value="${boss.id}">${boss.name} ${boss.diff} · ${boss.price.toLocaleString()} 메소</option>`
+  ).join('');
+  document.getElementById('dailyBossParty').innerHTML = Array.from({ length: 6 }, (_, i) =>
+    `<option value="${i + 1}">${i + 1}인</option>`
+  ).join('');
+  renderDailyItemRows([]);
+}
+
+function changeCalendarMonth(offset) {
+  const [year, month] = selectedCalendarDate.split('-').map(Number);
+  const current = new Date(year, month - 1, 1);
+  current.setMonth(current.getMonth() + offset);
+  const newYear = current.getFullYear();
+  const newMonth = String(current.getMonth() + 1).padStart(2, '0');
+  const maxDay = new Date(newYear, current.getMonth() + 1, 0).getDate();
+  const selectedDay = Math.min(Number(selectedCalendarDate.slice(-2)), maxDay);
+  selectedCalendarDate = `${newYear}-${newMonth}-${String(selectedDay).padStart(2, '0')}`;
+  renderMiniCalendar();
+  selectCalendarDate(selectedCalendarDate);
+}
+
+function renderMiniCalendar() {
+  const [year, month] = selectedCalendarDate.split('-').map(Number);
+  const monthIndex = month - 1;
+  const todayKey = toLocalDateKey(new Date());
+  const logs = getDailyLogs();
+  document.getElementById('calendarMonthTitle').textContent = `${year}년 ${month}월`;
+
+  const firstDay = new Date(year, monthIndex, 1).getDay();
+  const lastDate = new Date(year, monthIndex + 1, 0).getDate();
+  const grid = document.getElementById('calendarGrid');
+  let html = Array.from({ length: firstDay }, () => '<div></div>').join('');
+
+  for (let day = 1; day <= lastDate; day++) {
+    const date = new Date(year, monthIndex, day);
+    const dateKey = toLocalDateKey(date);
+    const dayOfWeek = date.getDay();
+    const isSelected = dateKey === selectedCalendarDate;
+    const hasLog = Boolean(logs[dateKey]);
+    let badgeClass = 'bg-slate-700/40 text-slate-300 hover:bg-slate-600';
+    let title = '날짜별 기록 입력';
 
     if (dayOfWeek === 0) {
-      badgeClass = 'bg-rose-500/25 border border-rose-500/60 text-rose-300 font-bold';
-      titleAttr = '썬데이 메이플';
+      badgeClass = 'bg-rose-500/25 border border-rose-500/60 text-rose-300 font-bold hover:bg-rose-500/40';
+      title = '썬데이 메이플 · 날짜별 기록';
     } else if (dayOfWeek === 4) {
-      badgeClass = 'bg-sky-500/25 border border-sky-500/60 text-sky-300 font-bold';
-      titleAttr = '주간 보스 · 결정석 90개 초기화';
+      badgeClass = 'bg-sky-500/25 border border-sky-500/60 text-sky-300 font-bold hover:bg-sky-500/40';
+      title = '주간 보스 · 결정석 초기화 · 날짜별 기록';
     }
+    if (isSelected) badgeClass += ' ring-2 ring-amber-400';
+    if (dateKey === todayKey) badgeClass += ' shadow-[inset_0_0_0_1px_rgba(251,191,36,0.65)]';
 
-    if (isToday) {
-      badgeClass += ' ring-2 ring-amber-400';
-    }
-
-    html += `
-      <div title="${titleAttr}" class="py-1.5 rounded-md ${badgeClass}">
-        ${d}
-      </div>
-    `;
+    html += `<button type="button" title="${title}" onclick="selectCalendarDate('${dateKey}')" class="relative py-1.5 rounded-md ${badgeClass}">${day}${hasLog ? '<span class="absolute right-1 top-0.5 h-1 w-1 rounded-full bg-emerald-300"></span>' : ''}</button>`;
   }
   grid.innerHTML = html;
+}
+
+function getNextSundayKey(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + ((7 - date.getDay()) % 7));
+  return toLocalDateKey(date);
+}
+
+function updateSundayMaplePanel(dateKey) {
+  const sundayKey = getNextSundayKey(dateKey);
+  const [year, month, day] = sundayKey.split('-').map(Number);
+  const event = SUNDAY_MAPLE_EVENTS[sundayKey];
+  const title = document.getElementById('sundayMapleTitle');
+  const summary = document.getElementById('sundayMapleSummary');
+  const image = document.getElementById('sundayMapleImage');
+  const link = document.getElementById('sundayMapleLink');
+  title.textContent = `썬데이 메이플 · ${month}월 ${day}일`;
+  link.href = event?.url || 'https://maplestory.nexon.com/News/Event';
+
+  if (event) {
+    summary.textContent = '이번 주 이벤트 상세 내용';
+    image.src = event.image;
+    image.classList.remove('hidden');
+  } else {
+    summary.textContent = '세부 혜택은 넥슨 공식 이벤트 공지에서 확인해 주세요.';
+    image.removeAttribute('src');
+    image.classList.add('hidden');
+  }
+}
+
+function selectCalendarDate(dateKey) {
+  selectedCalendarDate = dateKey;
+  const log = getDailyLogs()[dateKey] || {};
+  const [year, month, day] = dateKey.split('-').map(Number);
+  document.getElementById('dailyLogTitle').textContent = `${year}년 ${month}월 ${day}일 획득 기록`;
+  document.getElementById('dailyBossSelect').value = log.bossId || '';
+  document.getElementById('dailyBossParty').value = String(log.partySize || 1);
+  document.getElementById('dailyMesoInput').value = log.meso || '';
+  dailyItemDraft = (log.items || []).map(item => ({ ...item }));
+  renderDailyItemRows(dailyItemDraft);
+  document.getElementById('dailyLogStatus').textContent = log.updatedAt ? '저장된 기록을 불러왔어요.' : '';
+  updateDailyBossPreview();
+  updateSundayMaplePanel(dateKey);
+  renderMiniCalendar();
+  renderMonthlySummary();
+}
+
+function updateDailyBossPreview() {
+  const boss = BOSS_LIST.find(item => item.id === document.getElementById('dailyBossSelect').value);
+  const partySize = Number(document.getElementById('dailyBossParty').value || 1);
+  document.getElementById('dailyBossValue').textContent = boss
+    ? `내 몫 ${(boss.price / partySize).toLocaleString()} 메소`
+    : '';
+}
+
+function renderDailyItemRows(items) {
+  const rows = items.length ? items : [];
+  document.getElementById('dailyItemRows').innerHTML = rows.map((item, index) => {
+    const imageUrl = /^https:\/\//i.test(item.image || '') ? item.image : '';
+    return `<div class="rounded-md border border-slate-700 bg-slate-800/70 p-2">
+      <div class="flex gap-2">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-900 text-xl">
+          <span id="dailyItemFallback${index}" class="${imageUrl ? 'hidden' : ''}">🎁</span>
+          <img id="dailyItemImage${index}" src="${imageUrl}" alt="" class="${imageUrl ? '' : 'hidden'} h-full w-full object-contain" onerror="this.classList.add('hidden'); document.getElementById('dailyItemFallback${index}').classList.remove('hidden')" />
+        </div>
+        <div class="min-w-0 flex-1 space-y-1">
+          <input value="${escapeHtml(item.name || '')}" oninput="updateDailyItem(${index}, 'name', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs" placeholder="아이템 검색 (예: 생명의 연마석)" />
+          <div id="dailyItemSearch${index}" class="max-h-28 space-y-1 overflow-y-auto"></div>
+          <input value="${escapeHtml(item.image || '')}" oninput="updateDailyItem(${index}, 'image', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-[10px]" placeholder="아이템 이미지 URL (선택)" />
+        </div>
+        <button onclick="removeDailyItem(${index})" class="self-start px-1 text-slate-400 hover:text-rose-300" aria-label="아이템 삭제">✕</button>
+      </div>
+      <input type="number" min="0" value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItem(${index}, 'price', this.value)" class="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs" placeholder="아이템 가격 (메소)" />
+    </div>`;
+  }).join('') || '<p class="text-[11px] text-slate-500">+ 아이템을 눌러 드랍 아이템을 추가하세요.</p>';
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+let dailyItemDraft = [];
+const dailyItemSearchTimers = {};
+function addDailyItem() {
+  dailyItemDraft.push({ name: '', image: '', price: '' });
+  renderDailyItemRows(dailyItemDraft);
+}
+
+function updateDailyItem(index, field, value) {
+  if (!dailyItemDraft[index]) return;
+  dailyItemDraft[index][field] = value;
+  if (field === 'image') {
+    const image = document.getElementById(`dailyItemImage${index}`);
+    const safeUrl = /^https:\/\//i.test(value) ? value : '';
+    image.src = safeUrl;
+    image.classList.toggle('hidden', !safeUrl);
+    document.getElementById(`dailyItemFallback${index}`).classList.toggle('hidden', Boolean(safeUrl));
+  }
+  if (field === 'name') {
+    dailyItemDraft[index].itemId = null;
+    dailyItemDraft[index].image = '';
+    document.getElementById(`dailyItemImage${index}`).classList.add('hidden');
+    document.getElementById(`dailyItemFallback${index}`).classList.remove('hidden');
+    clearTimeout(dailyItemSearchTimers[index]);
+    const results = document.getElementById(`dailyItemSearch${index}`);
+    if (value.trim().length < 2) {
+      results.innerHTML = '';
+      return;
+    }
+    results.innerHTML = '<span class="text-[10px] text-slate-400">아이템 검색 중...</span>';
+    dailyItemSearchTimers[index] = setTimeout(() => searchDailyItemCatalog(index, value.trim()), 300);
+  }
+}
+
+async function searchDailyItemCatalog(index, query) {
+  const results = document.getElementById(`dailyItemSearch${index}`);
+  if (!results) return;
+  try {
+    const url = `https://maplestory.io/api/KMS/latest/item/list?searchFor=${encodeURIComponent(query)}&count=8`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('아이템 검색에 실패했습니다.');
+    const payload = await response.json();
+    const items = Array.isArray(payload)
+      ? payload
+      : [payload.items, payload.results, payload.data].find(Array.isArray) || [];
+    const matches = items.map(item => ({
+      id: Number(item.id ?? item.itemId ?? item.item_id ?? item.ItemId),
+      name: item.name ?? item.itemName ?? item.item_name ?? item.ItemName
+    })).filter(item => Number.isInteger(item.id) && item.name);
+    if (dailyItemDraft[index]?.name !== query || dailyItemDraft[index]?.itemId) return;
+
+    if (!matches.length) {
+      results.innerHTML = '<span class="text-[10px] text-slate-400">검색 결과가 없어요. 아이템 이름을 직접 입력할 수 있습니다.</span>';
+      return;
+    }
+    results.innerHTML = matches.map(item => {
+      const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
+      return `<button type="button" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex w-full items-center gap-2 rounded bg-slate-700 px-2 py-1 text-left text-[11px] hover:bg-slate-600">
+        <img src="https://maplestory.io/api/KMS/latest/item/${item.id}/icon" alt="" class="h-7 w-7 object-contain" />
+        <span>${escapeHtml(item.name)}</span>
+      </button>`;
+    }).join('');
+  } catch (error) {
+    results.innerHTML = '<span class="text-[10px] text-slate-400">아이템 아이콘 검색을 불러오지 못했어요.</span>';
+  }
+}
+
+function selectDailyItem(index, itemId, encodedName) {
+  clearTimeout(dailyItemSearchTimers[index]);
+  const name = decodeURIComponent(encodedName);
+  dailyItemDraft[index] = {
+    ...dailyItemDraft[index],
+    name,
+    itemId,
+    image: `https://maplestory.io/api/KMS/latest/item/${itemId}/icon`
+  };
+  renderDailyItemRows(dailyItemDraft);
+}
+
+function removeDailyItem(index) {
+  dailyItemDraft.splice(index, 1);
+  renderDailyItemRows(dailyItemDraft);
+}
+
+function saveDailyLog() {
+  const logs = getDailyLogs();
+  const bossId = document.getElementById('dailyBossSelect').value;
+  const partySize = Number(document.getElementById('dailyBossParty').value || 1);
+  const meso = Number(document.getElementById('dailyMesoInput').value || 0);
+  const items = dailyItemDraft
+    .filter(item => item.name.trim() || item.image.trim() || Number(item.price) > 0)
+    .map(item => ({ name: item.name.trim(), itemId: item.itemId || null, image: item.image.trim(), price: Number(item.price) || 0 }));
+
+  if (!bossId && meso === 0 && items.length === 0) {
+    delete logs[selectedCalendarDate];
+  } else {
+    logs[selectedCalendarDate] = { bossId, partySize, meso, items, updatedAt: new Date().toISOString() };
+  }
+  localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
+  document.getElementById('dailyLogStatus').textContent = '이 브라우저에 저장했어요.';
+  renderMiniCalendar();
+  renderMonthlySummary();
+}
+
+function clearDailyLog() {
+  const logs = getDailyLogs();
+  delete logs[selectedCalendarDate];
+  localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
+  document.getElementById('dailyBossSelect').value = '';
+  document.getElementById('dailyBossParty').value = '1';
+  document.getElementById('dailyMesoInput').value = '';
+  dailyItemDraft = [];
+  renderDailyItemRows(dailyItemDraft);
+  updateDailyBossPreview();
+  document.getElementById('dailyLogStatus').textContent = '선택한 날짜의 기록을 지웠어요.';
+  renderMiniCalendar();
+  renderMonthlySummary();
+}
+
+function getDailyLogTotal(log) {
+  const boss = BOSS_LIST.find(item => item.id === log.bossId);
+  const bossIncome = boss ? boss.price / (Number(log.partySize) || 1) : 0;
+  const itemIncome = (log.items || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const mesoIncome = Number(log.meso) || 0;
+  return { bossIncome, itemIncome, mesoIncome, total: bossIncome + itemIncome + mesoIncome };
+}
+
+function renderMonthlySummary() {
+  const monthPrefix = selectedCalendarDate.slice(0, 7);
+  const logs = getDailyLogs();
+  const entries = Object.entries(logs)
+    .filter(([date]) => date.startsWith(monthPrefix))
+    .sort(([a], [b]) => a.localeCompare(b));
+  let bossTotal = 0;
+  let itemTotal = 0;
+  let mesoTotal = 0;
+  const rows = entries.map(([date, log]) => {
+    const totals = getDailyLogTotal(log);
+    bossTotal += totals.bossIncome;
+    itemTotal += totals.itemIncome;
+    mesoTotal += totals.mesoIncome;
+    const boss = BOSS_LIST.find(item => item.id === log.bossId);
+    const itemNames = (log.items || []).map(item => item.name).filter(Boolean).join(', ');
+    const description = [boss ? `${boss.name} ${boss.diff}` : '', itemNames].filter(Boolean).join(' · ');
+    return `<div class="flex justify-between gap-2 border-t border-slate-700/70 pt-1"><span>${Number(date.slice(-2))}일${description ? ` · ${escapeHtml(description)}` : ''}</span><strong class="shrink-0 text-emerald-300">${Math.round(totals.total).toLocaleString()}</strong></div>`;
+  });
+  document.getElementById('monthlyTotal').textContent = `${Math.round(bossTotal + itemTotal + mesoTotal).toLocaleString()} 메소`;
+  document.getElementById('monthlyBreakdown').textContent = `보스 ${Math.round(bossTotal).toLocaleString()} + 아이템 ${Math.round(itemTotal).toLocaleString()} + 메소 ${Math.round(mesoTotal).toLocaleString()}`;
+  document.getElementById('monthlyRecordsList').innerHTML = rows.join('') || '<p class="text-slate-500">이번 달 기록이 아직 없어요.</p>';
 }
