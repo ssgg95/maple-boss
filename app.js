@@ -260,6 +260,7 @@ async function submitAuth() {
   if (authMode === 'signup') {
     if (!mainChar) return alert('대표 캐릭터 닉네임을 입력하세요.');
     
+    // 넥슨 API 호출 및 방어 코드 (JSON 파싱 에러 방지)
     let characterNames = [mainChar];
     try {
       const mapleRes = await fetch(`/api/maple?name=${encodeURIComponent(mainChar)}`);
@@ -282,6 +283,7 @@ async function submitAuth() {
     if (error) return alert('가입 실패 (중복된 아이디일 수 있습니다): ' + error.message);
     alert('가입 완료! 자동 로그인됩니다.');
     currentUser = { username, main_character: mainChar };
+  
   } else {
     const { data, error } = await supabaseClient
       .from('users')
