@@ -1,5 +1,5 @@
 // app.js
-const SUPABASE_URL = 'rmpwayrmhpfrnbcjixot';
+const SUPABASE_URL = '[https://rmpwayrmhpfrnbcjixot.supabase.co](https://rmpwayrmhpfrnbcjixot.supabase.co)';
 const SUPABASE_ANON_KEY = 'sb_publishable_MvNt1lBJZTTec8dLwBXtgg_UrLHrYjO';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
