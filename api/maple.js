@@ -31,7 +31,25 @@ export default async function handler(req, res) {
     
     const { ocid } = await ocidRes.json();
 
-    // 2. Supabase에서 이 캐릭터가 속한 유저의 등록된 부캐 목록(account_characters) 확인
+    // 2. 유니온 챔피언에 등록된 캐릭터 이름 조회
+    let unionChampionNames = [];
+    let unionChampionLookupSucceeded = false;
+    try {
+      const unionRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/union-champion?ocid=${encodeURIComponent(ocid)}`, {
+        headers: { 'x-nxopen-api-key': NEXON_API_KEY }
+      });
+      if (unionRes.ok) {
+        unionChampionLookupSucceeded = true;
+        const unionData = await unionRes.json();
+        unionChampionNames = (unionData.union_champion || [])
+          .map(champion => champion.champion_name)
+          .filter(Boolean);
+      }
+    } catch (e) {
+      console.warn('유니온 챔피언 조회 실패:', e.message);
+    }
+
+    // 3. Supabase에서 이 캐릭터가 속한 유저의 기존 캐릭터 목록 확인 (API 미지원 시 호환용)
     let registeredChars = [];
     if (supabaseUrl && supabaseKey) {
       // main_character이거나 account_characters에 포함된 유저를 찾음
@@ -47,10 +65,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // 기본은 검색한 닉네임, 만약 DB에 등록된 계정이라면 등록된 모든 부캐 포함
-    let characterNames = Array.from(new Set([name, ...registeredChars]));
+    // 유니온 조회에 성공하면 등록된 챔피언만 사용하고, API 실패 시 기존 등록 목록으로 대체
+    const fallbackNames = registeredChars.length > 0 ? registeredChars : [name];
+    let characterNames = Array.from(new Set(
+      unionChampionLookupSucceeded ? unionChampionNames : fallbackNames
+    ));
 
-    // 3. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 병렬 조회 (최대 10개)
+    // 4. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 병렬 조회 (최대 10개)
     const candidateNames = characterNames.slice(0, 10);
     const detailsPromises = candidateNames.map(async (cName) => {
       try {
@@ -86,7 +107,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       searchedName: name,
-      top5: top5.length > 0 ? top5 : [{ name, world: '-', job: '-', level: 0, image: '' }],
+      top5: top5.length > 0 ? top5 : (unionChampionLookupSucceeded ? [] : [{ name, world: '-', job: '-', level: 0, image: '' }]),
       allCharacterNames: characterNames
     });
 

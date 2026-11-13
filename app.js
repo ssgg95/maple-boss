@@ -54,7 +54,7 @@ async function searchAccount(overrideName) {
     const { data: matchedUsers } = await supabaseClient
       .from('users')
       .select('username, main_character, account_characters')
-      .contains('account_characters', [queryName]);
+      .or(`main_character.eq.${queryName},account_characters.cs.{${queryName}}`);
 
     viewedOwner = matchedUsers && matchedUsers.length > 0 ? matchedUsers[0].username : null;
 
@@ -80,6 +80,15 @@ async function searchAccount(overrideName) {
       : '계정 내 상위 5개 캐릭터의 코디와 저장된 주간 보스 수익 내역입니다.';
 
     document.getElementById('saveBtn').classList.toggle('hidden', !isMyAccount);
+
+    if (top5Characters.length === 0) {
+      document.getElementById('viewingTitle').textContent = `⚠️ [${data.searchedName}] 계정에 유니온 챔피언 캐릭터가 없습니다.`;
+      document.getElementById('viewingSub').textContent = '유니온 챔피언에 등록된 캐릭터만 표시됩니다.';
+      document.getElementById('saveBtn').classList.add('hidden');
+      document.getElementById('top5Container').innerHTML = '';
+      document.getElementById('bossSection').classList.add('hidden');
+      return;
+    }
 
     renderTop5Cards();
     renderCharacterTabs();
@@ -254,6 +263,7 @@ function getBossGroups() {
 function normalizeBossSettings(settings) {
   const normalized = {};
   const bossById = Object.fromEntries(BOSS_LIST.map(boss => [boss.id, boss]));
+  const removedBossIds = new Set(['akechi', 'princess_no']);
 
   Object.entries(settings || {}).forEach(([charName, savedBosses]) => {
     const selectedByBossName = new Map();
@@ -262,7 +272,7 @@ function normalizeBossSettings(settings) {
     Object.entries(savedBosses || {}).forEach(([bossId, partySize]) => {
       const boss = bossById[bossId];
       if (!boss) {
-        unknownBosses[bossId] = partySize;
+        if (!removedBossIds.has(bossId)) unknownBosses[bossId] = partySize;
         return;
       }
 
