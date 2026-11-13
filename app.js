@@ -22,6 +22,22 @@ const SUNDAY_MAPLE_EVENTS = {
     url: 'https://maplestory.nexon.com/News/Event/1409'
   }
 };
+const DAILY_QUOTES = [
+  '오늘의 한 걸음이 다음 주의 나를 가볍게 한다.',
+  '기록은 작은 성취를 눈에 보이게 만든다.',
+  '꾸준함은 결국 가장 강한 스펙이 된다.',
+  '오늘 할 수 있는 만큼이면 충분하다.',
+  '천천히 가도 매일 가면 멀리 도착한다.',
+  '작은 준비가 보스전의 여유를 만든다.',
+  '쌓아 둔 노력은 필요한 순간에 빛난다.',
+  '비교보다 중요한 건 어제보다 나아진 오늘이다.',
+  '한 번의 기록이 다음 목표를 선명하게 한다.',
+  '쉬어 가는 날도 오래 달리기 위한 과정이다.',
+  '작은 성공을 놓치지 말고 다음 도전을 준비하자.',
+  '내 페이스를 지키는 사람이 끝까지 강하다.',
+  '오늘의 선택이 내일의 가능성을 넓힌다.',
+  '모험은 준비한 만큼 더 즐거워진다.'
+];
 const MAPLESTORY_DATA_VERSION = '388';
 const BOSS_DROP_CATALOG = [
   { group: '익셉셔널 해머', items: [
@@ -73,6 +89,8 @@ function getHostedItemIconUrl(folder, name) {
 
 // 초기화 실행
 document.addEventListener('DOMContentLoaded', () => {
+  renderDailyQuote();
+  setInterval(renderDailyQuote, 60_000);
   dailyLootLogs = readLocalDailyLogs();
   initDailyLogControls();
   renderMiniCalendar();
@@ -92,6 +110,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 });
+
+function renderDailyQuote() {
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const firstDay = Date.UTC(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((today - firstDay) / 86_400_000);
+  const quote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
+  const quoteElement = document.getElementById('todayQuote');
+  const dateElement = document.getElementById('todayQuoteDate');
+  if (quoteElement) quoteElement.textContent = quote;
+  if (dateElement) dateElement.textContent = `${now.getMonth() + 1}월 ${now.getDate()}일`;
+}
 
 function showHome() {
   document.getElementById('searchInput').value = '';
