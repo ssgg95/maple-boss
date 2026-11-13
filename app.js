@@ -578,62 +578,7 @@ function getDailyLogs() {
 }
 
 function initDailyLogControls() {
-  renderDailyBossOptions();
   renderDailyItemRows([]);
-}
-
-function renderDailyBossOptions() {
-  const groups = new Map();
-  BOSS_LIST.forEach(boss => {
-    if (!groups.has(boss.name)) groups.set(boss.name, []);
-    groups.get(boss.name).push(boss);
-  });
-  document.getElementById('dailyBossOptions').innerHTML = Array.from(groups.values()).map(group => `
-    <div class="rounded border border-slate-700/70 bg-slate-900/30 p-1.5">
-      <div class="mb-1 text-[11px] font-semibold text-slate-300">${group[0].name}</div>
-      <div class="flex flex-wrap gap-1">
-        ${group.map(boss => {
-          const isSelected = dailyBossDraft.includes(boss.id);
-          return `<button type="button" aria-pressed="${isSelected}" onclick="toggleDailyBoss('${boss.id}')" class="rounded border px-2 py-1 text-[10px] ${isSelected ? 'border-amber-400 bg-amber-500/20 text-amber-200' : 'border-slate-600 bg-slate-800 text-slate-300 hover:border-slate-400'}">
-            ${boss.diff} · ${boss.price.toLocaleString()}
-          </button>`;
-        }).join('')}
-      </div>
-      ${(() => {
-        const selectedBoss = group.find(boss => dailyBossDraft.includes(boss.id));
-        if (!selectedBoss) return '';
-        const partySize = dailyBossPartySizes[selectedBoss.id] || 1;
-        return `<label class="mt-1.5 flex items-center gap-2 text-[10px] text-slate-400">분배 인원
-          <select onchange="changeDailyBossParty('${selectedBoss.id}', this.value)" class="rounded border border-slate-600 bg-slate-800 px-1.5 py-1 text-[10px] text-slate-100">
-            ${Array.from({ length: 6 }, (_, index) => `<option value="${index + 1}" ${partySize === index + 1 ? 'selected' : ''}>${index + 1}인</option>`).join('')}
-          </select>
-        </label>`;
-      })()}
-    </div>
-  `).join('');
-}
-
-function toggleDailyBoss(bossId) {
-  const boss = BOSS_LIST.find(item => item.id === bossId);
-  if (!boss) return;
-  const alreadySelected = dailyBossDraft.includes(bossId);
-  const previousBossId = dailyBossDraft.find(id => BOSS_LIST.find(item => item.id === id)?.name === boss.name);
-  const partySize = previousBossId ? dailyBossPartySizes[previousBossId] || 1 : 1;
-  dailyBossDraft = dailyBossDraft.filter(id => BOSS_LIST.find(item => item.id === id)?.name !== boss.name);
-  if (previousBossId) delete dailyBossPartySizes[previousBossId];
-  if (!alreadySelected) {
-    dailyBossDraft.push(bossId);
-    dailyBossPartySizes[bossId] = partySize;
-  }
-  renderDailyBossOptions();
-  updateDailyBossPreview();
-}
-
-function changeDailyBossParty(bossId, partySize) {
-  if (!dailyBossDraft.includes(bossId)) return;
-  dailyBossPartySizes[bossId] = Number(partySize) || 1;
-  renderDailyBossOptions();
-  updateDailyBossPreview();
 }
 
 function changeCalendarMonth(offset) {
@@ -720,39 +665,13 @@ function selectCalendarDate(dateKey) {
   const [year, month, day] = dateKey.split('-').map(Number);
   document.getElementById('dailyLogTitle').textContent = `${year}년 ${month}월 ${day}일 획득 기록`;
   renderDailyConfiguredBosses();
-  const savedBosses = Array.isArray(log.bosses) && log.bosses.length
-    ? log.bosses
-    : (log.bossId ? [{ bossId: log.bossId, partySize: log.partySize }] : []);
-  dailyBossDraft = [];
-  dailyBossPartySizes = {};
-  savedBosses.forEach(entry => {
-    const bossId = typeof entry === 'string' ? entry : entry.bossId;
-    const boss = BOSS_LIST.find(item => item.id === bossId);
-    if (!boss) return;
-    const existingId = dailyBossDraft.find(id => BOSS_LIST.find(item => item.id === id)?.name === boss.name);
-    if (existingId) {
-      dailyBossDraft = dailyBossDraft.filter(id => id !== existingId);
-      delete dailyBossPartySizes[existingId];
-    }
-    dailyBossDraft.push(bossId);
-    dailyBossPartySizes[bossId] = Number(typeof entry === 'string' ? log.partySize : entry.partySize) || 1;
-  });
-  renderDailyBossOptions();
   document.getElementById('dailyMesoInput').value = log.meso || '';
   dailyItemDraft = (log.items || []).map(item => ({ ...item }));
   renderDailyItemRows(dailyItemDraft);
   document.getElementById('dailyLogStatus').textContent = log.updatedAt ? '저장된 기록을 불러왔어요.' : '';
-  updateDailyBossPreview();
   updateSundayMaplePanel(dateKey);
   renderMiniCalendar();
   renderMonthlySummary();
-}
-
-function updateDailyBossPreview() {
-  const bosses = dailyBossDraft.map(id => BOSS_LIST.find(item => item.id === id)).filter(Boolean);
-  document.getElementById('dailyBossValue').textContent = bosses.length
-    ? `선택 ${bosses.length}개 · 내 몫 합계 ${Math.floor(bosses.reduce((sum, boss) => sum + boss.price / (dailyBossPartySizes[boss.id] || 1), 0)).toLocaleString()} 메소`
-    : '';
 }
 
 function renderDailyItemRows(items) {
@@ -782,8 +701,6 @@ function escapeHtml(value) {
 }
 
 let dailyItemDraft = [];
-let dailyBossDraft = [];
-let dailyBossPartySizes = {};
 const dailyItemSearchTimers = {};
 function addDailyItem() {
   dailyItemDraft.push({ name: '', image: '', price: '' });
@@ -811,7 +728,7 @@ function updateDailyItem(index, field, value) {
       results.innerHTML = '';
       return;
     }
-    results.innerHTML = '<span class="text-[10px] text-slate-400">아이템 검색 중...</span>';
+    results.innerHTML = '<span class="text-[10px] text-slate-400">한국어 아이템 이름과 아이콘을 검색 중...</span>';
     dailyItemSearchTimers[index] = setTimeout(() => searchDailyItemCatalog(index, value.trim()), 300);
   }
 }
@@ -837,13 +754,14 @@ async function searchDailyItemCatalog(index, query) {
       results.innerHTML = '<span class="text-[10px] text-slate-400">검색 결과가 없어요. 아이템 이름을 직접 입력할 수 있습니다.</span>';
       return;
     }
-    results.innerHTML = matches.map(item => {
+    results.innerHTML = `<div class="grid grid-cols-4 gap-1.5">${matches.map(item => {
       const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
-      return `<button type="button" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex w-full items-center gap-2 rounded bg-slate-700 px-2 py-1 text-left text-[11px] hover:bg-slate-600">
-        <img src="https://maplestory.io/api/KMS/latest/item/${item.id}/icon" alt="" class="h-7 w-7 object-contain" />
-        <span>${escapeHtml(item.name)}</span>
+      return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center gap-1 rounded-md border border-slate-600 bg-slate-800 p-1.5 text-center hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400">
+        <span class="hidden h-10 w-10 items-center justify-center text-lg">🎁</span>
+        <img src="https://maplestory.io/api/KMS/latest/item/${item.id}/icon" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-10 w-10 cursor-pointer object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
+        <span class="w-full truncate text-[10px] leading-tight text-slate-200">${escapeHtml(item.name)}</span>
       </button>`;
-    }).join('');
+    }).join('')}</div><p class="mt-1 text-[9px] text-slate-500">아이콘을 누르면 한국어 아이템 이름과 이미지가 입력돼요.</p>`;
   } catch (error) {
     results.innerHTML = '<span class="text-[10px] text-slate-400">아이템 아이콘 검색을 불러오지 못했어요.</span>';
   }
@@ -869,17 +787,18 @@ function removeDailyItem(index) {
 function saveDailyLog() {
   const logs = getDailyLogs();
   const meso = Number(document.getElementById('dailyMesoInput').value || 0);
+  const clearedBosses = getClearedConfiguredBossEntries(selectedCalendarDate);
   const items = dailyItemDraft
     .filter(item => item.name.trim() || item.image.trim() || Number(item.price) > 0)
     .map(item => ({ name: item.name.trim(), itemId: item.itemId || null, image: item.image.trim(), price: Number(item.price) || 0 }));
 
-  if (dailyBossDraft.length === 0 && meso === 0 && items.length === 0) {
+  if (clearedBosses.length === 0 && meso === 0 && items.length === 0) {
     delete logs[selectedCalendarDate];
   } else {
     logs[selectedCalendarDate] = {
-      bosses: dailyBossDraft.map(bossId => ({ bossId, partySize: dailyBossPartySizes[bossId] || 1 })),
-      bossId: dailyBossDraft[0] || '',
-      partySize: dailyBossDraft.length ? (dailyBossPartySizes[dailyBossDraft[0]] || 1) : 1,
+      bosses: clearedBosses,
+      bossId: clearedBosses[0]?.bossId || '',
+      partySize: clearedBosses[0]?.partySize || 1,
       meso,
       items,
       updatedAt: new Date().toISOString()
@@ -891,17 +810,29 @@ function saveDailyLog() {
   renderMonthlySummary();
 }
 
+function getClearedConfiguredBossEntries(dateKey) {
+  const statusByCharacter = dailyBossClearStatus[dateKey] || {};
+  const entries = [];
+  Object.entries(statusByCharacter).forEach(([charName, status]) => {
+    Object.entries(status || {}).forEach(([bossId, isCleared]) => {
+      const partySize = bossSettings[charName]?.[bossId];
+      if (!isCleared || partySize === undefined || isMonthlyBossId(bossId)) return;
+      entries.push({ bossId, partySize: Number(partySize) || 1, characterName: charName });
+    });
+  });
+  return entries;
+}
+
 function clearDailyLog() {
   const logs = getDailyLogs();
   delete logs[selectedCalendarDate];
   localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
-  dailyBossDraft = [];
-  dailyBossPartySizes = {};
-  renderDailyBossOptions();
+  delete dailyBossClearStatus[selectedCalendarDate];
+  saveDailyBossClearStatus();
+  renderDailyConfiguredBosses();
   document.getElementById('dailyMesoInput').value = '';
   dailyItemDraft = [];
   renderDailyItemRows(dailyItemDraft);
-  updateDailyBossPreview();
   document.getElementById('dailyLogStatus').textContent = '선택한 날짜의 기록을 지웠어요.';
   renderMiniCalendar();
   renderMonthlySummary();
