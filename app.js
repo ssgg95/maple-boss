@@ -159,13 +159,15 @@ function renderCharacterTabs() {
 
   tabs.innerHTML = top5Characters.map(char => {
     const isActive = char.name === activeCharName;
-    const count = Object.keys(bossSettings[char.name] || {}).length;
+    const charBosses = bossSettings[char.name] || {};
+    const count = getCharacterWeeklyBossCount(charBosses);
+    const monthlyCount = Object.keys(charBosses).filter(isMonthlyBossId).length;
     return `
       <button onclick="selectCharacterTab('${char.name}')"
         class="px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition ${
           isActive ? 'border-amber-400 text-amber-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'
         }">
-        ${char.name} <span class="text-xs opacity-75">(${count})</span>
+        ${char.name} <span class="text-xs opacity-75">(${count}/12${monthlyCount ? ` · 월간 ${monthlyCount}` : ''})</span>
       </button>
     `;
   }).join('');
@@ -183,20 +185,22 @@ function selectCharacterTab(charName) {
 function renderBossList() {
   const grid = document.getElementById('bossListGrid');
   const charBosses = bossSettings[activeCharName] || {};
-  const characterCount = Object.keys(charBosses).length;
+  const characterCount = getCharacterWeeklyBossCount(charBosses);
+  const monthlyCount = Object.keys(charBosses).filter(isMonthlyBossId).length;
   const totalCount = getTotalCrystalCount();
   const isReadOnly = viewedOwner && (!currentUser || currentUser.username !== viewedOwner);
 
-  document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 주간 보스 설정 (${characterCount}/12)`;
+  document.getElementById('selectedCharTitle').textContent = `⚔️ ${activeCharName} 보스 설정 (주간 ${characterCount}/12 · 월간 ${monthlyCount})`;
 
-  grid.innerHTML = getBossGroups().map(group => {
+  const renderGroup = group => {
     const selectedBoss = group.find(boss => charBosses[boss.id] !== undefined);
     const isChecked = Boolean(selectedBoss);
     const selectedPartySize = selectedBoss ? charBosses[selectedBoss.id] : 1;
     const myShare = selectedBoss
       ? Math.floor(selectedBoss.price / selectedPartySize)
       : null;
-    const disabled = isReadOnly || (!isChecked && (characterCount >= 12 || totalCount >= 90));
+    const isMonthly = isMonthlyBossId(group[0].id);
+    const disabled = isReadOnly || (!isChecked && !isMonthly && (characterCount >= 12 || totalCount >= 90));
 
     return `
       <div class="flex items-center justify-between gap-3 bg-slate-900/70 border ${isChecked ? 'border-amber-500/50' : 'border-slate-700/70'} rounded-lg px-3 py-2">
@@ -230,7 +234,17 @@ function renderBossList() {
         </select>
       </div>
     `;
-  }).join('');
+  };
+
+  const groups = getBossGroups();
+  const weeklyGroups = groups.filter(group => !isMonthlyBossId(group[0].id));
+  const monthlyGroups = groups.filter(group => isMonthlyBossId(group[0].id));
+  grid.innerHTML = `
+    <div class="col-span-full -mb-1 text-sm font-bold text-sky-300">주간 보스</div>
+    ${weeklyGroups.map(renderGroup).join('')}
+    <div class="col-span-full mt-3 -mb-1 border-t border-slate-700 pt-3 text-sm font-bold text-violet-300">월간 보스</div>
+    ${monthlyGroups.map(renderGroup).join('')}
+  `;
 }
 
 function toggleBoss(bossId, checked) {
@@ -241,12 +255,12 @@ function toggleBoss(bossId, checked) {
   const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
 
   if (checked) {
-    if (!existingBoss && Object.keys(bossSettings[activeCharName]).length >= 12) {
+    if (!existingBoss && !isMonthlyBossId(bossId) && getCharacterWeeklyBossCount(bossSettings[activeCharName]) >= 12) {
       alert('캐릭터당 주간 보스는 최대 12개까지 선택할 수 있습니다.');
       renderBossList();
       return;
     }
-    if (!existingBoss && getTotalCrystalCount() >= 90) {
+    if (!existingBoss && !isMonthlyBossId(bossId) && getTotalCrystalCount() >= 90) {
       alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
       renderBossList();
       return;
@@ -268,11 +282,11 @@ function selectBossDifficulty(bossId) {
 
   const group = BOSS_LIST.filter(item => item.name === boss.name);
   const existingBoss = group.find(item => bossSettings[activeCharName][item.id] !== undefined);
-  if (!existingBoss && Object.keys(bossSettings[activeCharName]).length >= 12) {
+  if (!existingBoss && !isMonthlyBossId(bossId) && getCharacterWeeklyBossCount(bossSettings[activeCharName]) >= 12) {
     alert('캐릭터당 주간 보스는 최대 12개까지 선택할 수 있습니다.');
     return;
   }
-  if (!existingBoss && getTotalCrystalCount() >= 90) {
+  if (!existingBoss && !isMonthlyBossId(bossId) && getTotalCrystalCount() >= 90) {
     return alert('계정당 주간 결정석 최대 한도(90개)에 도달했습니다.');
   }
 
@@ -296,9 +310,17 @@ function changePartySize(bossId, size) {
 function getTotalCrystalCount() {
   let count = 0;
   Object.values(bossSettings).forEach(charObj => {
-    count += Object.keys(charObj).length;
+    count += Object.keys(charObj).filter(bossId => !isMonthlyBossId(bossId)).length;
   });
   return count;
+}
+
+function isMonthlyBossId(bossId) {
+  return BOSS_LIST.find(boss => boss.id === bossId)?.diff.includes('(월간)') || false;
+}
+
+function getCharacterWeeklyBossCount(charBosses = {}) {
+  return Object.keys(charBosses).filter(bossId => !isMonthlyBossId(bossId)).length;
 }
 
 function getBossGroups() {
@@ -344,19 +366,22 @@ function normalizeBossSettings(settings) {
 
 function calculateSummary() {
   let totalMeso = 0;
+  let monthlyMeso = 0;
   let charMeso = 0;
   const priceMap = Object.fromEntries(BOSS_LIST.map(b => [b.id, b.price]));
 
   Object.entries(bossSettings).forEach(([cName, bosses]) => {
     Object.entries(bosses).forEach(([bId, partySize]) => {
       const share = Math.floor((priceMap[bId] || 0) / partySize);
-      totalMeso += share;
+      if (isMonthlyBossId(bId)) monthlyMeso += share;
+      else totalMeso += share;
       if (cName === activeCharName) charMeso += share;
     });
   });
 
   const count = getTotalCrystalCount();
   document.getElementById('totalMeso').textContent = `${totalMeso.toLocaleString()} 메소`;
+  document.getElementById('monthlyBossMeso').textContent = `${monthlyMeso.toLocaleString()} 메소`;
   document.getElementById('selectedCharMeso').textContent = `소계: ${charMeso.toLocaleString()} 메소`;
   const counterEl = document.getElementById('crystalCounter');
   counterEl.textContent = `${count} / 90개`;
@@ -483,14 +508,29 @@ function getDailyLogs() {
 }
 
 function initDailyLogControls() {
-  const bossSelect = document.getElementById('dailyBossSelect');
-  bossSelect.innerHTML = '<option value="">보스 선택 안 함</option>' + BOSS_LIST.map(boss =>
-    `<option value="${boss.id}">${boss.name} ${boss.diff} · ${boss.price.toLocaleString()} 메소</option>`
-  ).join('');
+  renderDailyBossOptions();
   document.getElementById('dailyBossParty').innerHTML = Array.from({ length: 6 }, (_, i) =>
     `<option value="${i + 1}">${i + 1}인</option>`
   ).join('');
   renderDailyItemRows([]);
+}
+
+function renderDailyBossOptions() {
+  document.getElementById('dailyBossOptions').innerHTML = BOSS_LIST.map(boss => `
+    <label class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-slate-200 hover:bg-slate-700/70">
+      <input type="checkbox" ${dailyBossDraft.includes(boss.id) ? 'checked' : ''} onchange="toggleDailyBoss('${boss.id}', this.checked)" class="accent-amber-500" />
+      <span>${boss.name} ${boss.diff}</span>
+      <span class="ml-auto text-slate-400">${boss.price.toLocaleString()}</span>
+    </label>
+  `).join('');
+}
+
+function toggleDailyBoss(bossId, checked) {
+  dailyBossDraft = checked
+    ? [...new Set([...dailyBossDraft, bossId])]
+    : dailyBossDraft.filter(id => id !== bossId);
+  renderDailyBossOptions();
+  updateDailyBossPreview();
 }
 
 function changeCalendarMonth(offset) {
@@ -576,7 +616,10 @@ function selectCalendarDate(dateKey) {
   const log = getDailyLogs()[dateKey] || {};
   const [year, month, day] = dateKey.split('-').map(Number);
   document.getElementById('dailyLogTitle').textContent = `${year}년 ${month}월 ${day}일 획득 기록`;
-  document.getElementById('dailyBossSelect').value = log.bossId || '';
+  dailyBossDraft = Array.isArray(log.bosses)
+    ? log.bosses.map(entry => typeof entry === 'string' ? entry : entry.bossId).filter(Boolean)
+    : (log.bossId ? [log.bossId] : []);
+  renderDailyBossOptions();
   document.getElementById('dailyBossParty').value = String(log.partySize || 1);
   document.getElementById('dailyMesoInput').value = log.meso || '';
   dailyItemDraft = (log.items || []).map(item => ({ ...item }));
@@ -589,10 +632,10 @@ function selectCalendarDate(dateKey) {
 }
 
 function updateDailyBossPreview() {
-  const boss = BOSS_LIST.find(item => item.id === document.getElementById('dailyBossSelect').value);
+  const bosses = dailyBossDraft.map(id => BOSS_LIST.find(item => item.id === id)).filter(Boolean);
   const partySize = Number(document.getElementById('dailyBossParty').value || 1);
-  document.getElementById('dailyBossValue').textContent = boss
-    ? `내 몫 ${(boss.price / partySize).toLocaleString()} 메소`
+  document.getElementById('dailyBossValue').textContent = bosses.length
+    ? `선택 ${bosses.length}개 · 내 몫 합계 ${Math.floor(bosses.reduce((sum, boss) => sum + boss.price / partySize, 0)).toLocaleString()} 메소`
     : '';
 }
 
@@ -623,6 +666,7 @@ function escapeHtml(value) {
 }
 
 let dailyItemDraft = [];
+let dailyBossDraft = [];
 const dailyItemSearchTimers = {};
 function addDailyItem() {
   dailyItemDraft.push({ name: '', image: '', price: '' });
@@ -707,17 +751,23 @@ function removeDailyItem(index) {
 
 function saveDailyLog() {
   const logs = getDailyLogs();
-  const bossId = document.getElementById('dailyBossSelect').value;
   const partySize = Number(document.getElementById('dailyBossParty').value || 1);
   const meso = Number(document.getElementById('dailyMesoInput').value || 0);
   const items = dailyItemDraft
     .filter(item => item.name.trim() || item.image.trim() || Number(item.price) > 0)
     .map(item => ({ name: item.name.trim(), itemId: item.itemId || null, image: item.image.trim(), price: Number(item.price) || 0 }));
 
-  if (!bossId && meso === 0 && items.length === 0) {
+  if (dailyBossDraft.length === 0 && meso === 0 && items.length === 0) {
     delete logs[selectedCalendarDate];
   } else {
-    logs[selectedCalendarDate] = { bossId, partySize, meso, items, updatedAt: new Date().toISOString() };
+    logs[selectedCalendarDate] = {
+      bosses: dailyBossDraft.map(bossId => ({ bossId, partySize })),
+      bossId: dailyBossDraft[0] || '',
+      partySize,
+      meso,
+      items,
+      updatedAt: new Date().toISOString()
+    };
   }
   localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
   document.getElementById('dailyLogStatus').textContent = '이 브라우저에 저장했어요.';
@@ -729,7 +779,8 @@ function clearDailyLog() {
   const logs = getDailyLogs();
   delete logs[selectedCalendarDate];
   localStorage.setItem(DAILY_LOG_STORAGE_KEY, JSON.stringify(logs));
-  document.getElementById('dailyBossSelect').value = '';
+  dailyBossDraft = [];
+  renderDailyBossOptions();
   document.getElementById('dailyBossParty').value = '1';
   document.getElementById('dailyMesoInput').value = '';
   dailyItemDraft = [];
@@ -741,8 +792,14 @@ function clearDailyLog() {
 }
 
 function getDailyLogTotal(log) {
-  const boss = BOSS_LIST.find(item => item.id === log.bossId);
-  const bossIncome = boss ? boss.price / (Number(log.partySize) || 1) : 0;
+  const bossEntries = Array.isArray(log.bosses) && log.bosses.length
+    ? log.bosses
+    : (log.bossId ? [{ bossId: log.bossId, partySize: log.partySize }] : []);
+  const bossIncome = bossEntries.reduce((sum, entry) => {
+    const boss = BOSS_LIST.find(item => item.id === (typeof entry === 'string' ? entry : entry.bossId));
+    const partySize = Number(typeof entry === 'string' ? log.partySize : entry.partySize) || 1;
+    return sum + (boss ? boss.price / partySize : 0);
+  }, 0);
   const itemIncome = (log.items || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
   const mesoIncome = Number(log.meso) || 0;
   return { bossIncome, itemIncome, mesoIncome, total: bossIncome + itemIncome + mesoIncome };
@@ -762,9 +819,13 @@ function renderMonthlySummary() {
     bossTotal += totals.bossIncome;
     itemTotal += totals.itemIncome;
     mesoTotal += totals.mesoIncome;
-    const boss = BOSS_LIST.find(item => item.id === log.bossId);
+    const bossEntries = Array.isArray(log.bosses) && log.bosses.length
+      ? log.bosses
+      : (log.bossId ? [{ bossId: log.bossId }] : []);
+    const bossNames = bossEntries.map(entry => BOSS_LIST.find(item => item.id === (typeof entry === 'string' ? entry : entry.bossId)))
+      .filter(Boolean).map(boss => `${boss.name} ${boss.diff}`).join(', ');
     const itemNames = (log.items || []).map(item => item.name).filter(Boolean).join(', ');
-    const description = [boss ? `${boss.name} ${boss.diff}` : '', itemNames].filter(Boolean).join(' · ');
+    const description = [bossNames, itemNames].filter(Boolean).join(' · ');
     return `<div class="flex justify-between gap-2 border-t border-slate-700/70 pt-1"><span>${Number(date.slice(-2))}일${description ? ` · ${escapeHtml(description)}` : ''}</span><strong class="shrink-0 text-emerald-300">${Math.round(totals.total).toLocaleString()}</strong></div>`;
   });
   document.getElementById('monthlyTotal').textContent = `${Math.round(bossTotal + itemTotal + mesoTotal).toLocaleString()} 메소`;

@@ -90,9 +90,14 @@
             <span class="text-xs text-slate-400 block">계정 주간 결정석 한도</span>
             <span id="crystalCounter" class="text-xl font-bold text-emerald-400">0 / 90개</span>
           </div>
+          <div class="h-8 w-px bg-slate-700"></div>
+          <div>
+            <span class="text-xs text-slate-400 block">월간 보스 수익</span>
+            <span id="monthlyBossMeso" class="text-xl font-bold text-violet-300">0 메소</span>
+          </div>
         </div>
         <div class="text-xs text-slate-400">
-          * 캐릭터별 주간 최대 12개 · 계정당 주간 최대 90개
+          * 주간 보스: 캐릭터당 12개 · 계정당 90개 (월간 보스 별도)
         </div>
       </section>
 
@@ -145,8 +150,8 @@
 
         <section class="mt-3 rounded-lg border border-slate-700 bg-slate-900/40 p-3">
           <h3 id="dailyLogTitle" class="text-sm font-bold text-amber-200">날짜별 획득 기록</h3>
-          <label for="dailyBossSelect" class="mt-2 block text-xs text-slate-400">잡은 보스</label>
-          <select id="dailyBossSelect" onchange="updateDailyBossPreview()" class="mt-1 w-full rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-100"></select>
+          <label class="mt-2 block text-xs text-slate-400">잡은 보스 (여러 개 선택 가능)</label>
+          <div id="dailyBossOptions" class="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 p-2"></div>
           <div class="mt-1 flex items-center gap-2">
             <label for="dailyBossParty" class="text-xs text-slate-400">분배 인원</label>
             <select id="dailyBossParty" onchange="updateDailyBossPreview()" class="rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-100"></select>
