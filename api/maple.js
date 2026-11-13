@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. 캐릭터 ocid 조회
+    // 1. 검색한 캐릭터의 ocid 조회
     const ocidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
     });
@@ -25,42 +25,38 @@ export default async function handler(req, res) {
     
     const { ocid } = await ocidRes.json();
 
-    // 2. 계정 내 캐릭터 목록 조회 (메이플ID 기준 묶인 캐릭터들)
-    const listRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/character-list?ocid=${ocid}`, {
+    // 2. 유니온 레이더(배치된 캐릭터 목록) 조회
+    let characterNames = [name]; // 기본은 검색한 캐릭터
+
+    const unionRaiderRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/union-raider?ocid=${ocid}`, {
       headers: { 'x-nxopen-api-key': NEXON_API_KEY }
     });
 
-    let targetCharacters = []; // { character_name, world_name, ... }
-    let allCharacterNames = [name];
-
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      const rawList = listData.account_list?.[0]?.character_list || listData.character_list || [];
-      
-      if (rawList.length > 0) {
-        targetCharacters = rawList;
-        allCharacterNames = rawList.map(c => c.character_name);
+    if (unionRaiderRes.ok) {
+      const raiderData = await unionRaiderRes.json();
+      // 유니온 블록에 배치된 캐릭터들의 이름 추출 (중복 제거)
+      if (raiderData.union_inner_stat && Array.isArray(raiderData.union_block)) {
+        const unionChars = raiderData.union_block
+          .map(block => block.character_name)
+          .filter(Boolean);
+        
+        // 검색한 캐릭터를 맨 앞에 두고, 유니온 캐릭터들 합치기 (중복 제거)
+        characterNames = Array.from(new Set([name, ...unionChars]));
       }
     }
 
-    // 만약 목록 API에서 안 가져와지면 검색한 단일 캐릭터로 fallback
-    if (targetCharacters.length === 0) {
-      targetCharacters = [{ character_name: name }];
-    }
+    // 3. 각 캐릭터들의 레벨 및 기본 정보를 조회하기 위해 먼저 레벨/월드 정보를 일괄 파악하거나 상위 후보군 선별
+    // (넥슨 API 호출 횟수 제한을 고려하여 최대 10개 정도만 상세 조회 후 레벨 순 정렬)
+    const candidateNames = characterNames.slice(0, 10); // 성능을 위해 최대 10개만 탐색
 
-    // 3. 캐릭터들의 상세 정보(레벨, 직업, 코디 이미지) 병렬 조회 (상위 최대 5개)
-    const top5Details = await Promise.all(
-      targetCharacters.slice(0, 5).map(async (charObj) => {
-        const cName = charObj.character_name;
-        
-        // 부캐들 각각의 ocid 다시 조회
+    const detailsPromises = candidateNames.map(async (cName) => {
+      try {
         const cOcidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`, {
           headers: { 'x-nxopen-api-key': NEXON_API_KEY }
         });
         if (!cOcidRes.ok) return null;
         const { ocid: cOcid } = await cOcidRes.json();
 
-        // 기본 정보 조회 (레벨, 직업, 이미지 등)
         const basicRes = await fetch(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${cOcid}`, {
           headers: { 'x-nxopen-api-key': NEXON_API_KEY }
         });
@@ -74,15 +70,21 @@ export default async function handler(req, res) {
           level: basic.character_level,
           image: basic.character_image
         };
-      })
-    );
+      } catch (e) {
+        return null;
+      }
+    });
 
-    const validTop5 = top5Details.filter(Boolean);
+    const results = (await Promise.all(detailsPromises)).filter(Boolean);
+
+    // 레벨 높은 순서대로 정렬하여 상위 5개 추출
+    results.sort((a, b) => b.level - a.level);
+    const top5 = results.slice(0, 5);
 
     return res.status(200).json({
       searchedName: name,
-      top5: validTop5.length > 0 ? validTop5 : [{ name, world: '알 수 없음', job: '-', level: 0, image: '' }],
-      allCharacterNames: allCharacterNames
+      top5: top5.length > 0 ? top5 : [{ name, world: '-', job: '-', level: 0, image: '' }],
+      allCharacterNames: characterNames
     });
 
   } catch (err) {
