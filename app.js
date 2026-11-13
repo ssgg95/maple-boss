@@ -23,6 +23,14 @@ const SUNDAY_MAPLE_EVENTS = {
 };
 const MAPLESTORY_DATA_VERSION = '388';
 const BOSS_DROP_CATALOG = [
+  { group: '광휘의 보스 장비', items: [
+    { id: null, name: '근원의 속삭임', image: 'https://mitemprice.kr/image/칠흑/근원의%20속삭임.png' },
+    { id: null, name: '황홀한 악몽', image: 'https://mitemprice.kr/image/칠흑/황홀한%20악몽.png' },
+    { id: null, name: '죽음의 맹세', image: 'https://mitemprice.kr/image/칠흑/죽음의%20맹세.png' },
+    { id: null, name: '불멸의 유산', image: 'https://mitemprice.kr/image/칠흑/불멸의%20유산.png' },
+    { id: null, name: '오만의 원죄', image: 'https://mitemprice.kr/image/그외/오만의%20원죄.png' },
+    { id: null, name: '굶주리는 핏빛 원혼', image: 'https://mitemprice.kr/image/그외/굶주리는%20핏빛%20원혼.png' }
+  ] },
   { group: '칠흑의 보스 장신구', items: [
     { id: 1012632, name: '루즈 컨트롤 머신 마크' },
     { id: 1022278, name: '마력이 깃든 안대' },
@@ -46,15 +54,9 @@ const BOSS_DROP_CATALOG = [
     { id: 1022231, name: '아쿠아틱 레터 눈장식' },
     { id: 1032241, name: '데아 시두스 이어링' }
   ] },
-  { group: '소비 · 성장 아이템', items: [
-    { id: 2003551, name: '재물 획득의 비약' },
+  { group: '연마석', items: [
     { id: 2539001, name: '생명의 연마석' },
-    { id: 4009547, name: '솔 에르다 조각' },
-    { id: 2048717, name: '영원한 환생의 불꽃' },
-    { id: 2048716, name: '강력한 환생의 불꽃' },
-    { id: 2433103, name: '보스 명예의 훈장' },
-    { id: 2436499, name: '수상한 큐브' },
-    { id: 2730000, name: '수상한 에디셔널 큐브' }
+    { id: null, name: '신념의 연마석', image: 'https://mitemprice.kr/image/그외/신념의%20연마석.png' }
   ] }
 ];
 
@@ -760,9 +762,14 @@ function renderBossDropCatalog() {
 
 function renderItemCatalogTile(item) {
   const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
-  return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${activeItemCatalogIndex}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 p-3 text-center transition hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:p-4">
+  const itemId = Number.isInteger(item.id) ? item.id : 'null';
+  const imageUrl = item.image || (Number.isInteger(item.id) ? getMapleItemIconUrl(item.id) : '');
+  const imageMarkup = imageUrl
+    ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-16 w-16 object-contain sm:h-20 sm:w-20" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />`
+    : '';
+  return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${activeItemCatalogIndex}, ${itemId}, '${encodedName}', '${encodeURIComponent(imageUrl)}')" class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 p-3 text-center transition hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:p-4">
     <span class="hidden h-16 w-16 items-center justify-center text-3xl sm:h-20 sm:w-20">🎁</span>
-    <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-16 w-16 object-contain sm:h-20 sm:w-20" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
+    ${imageMarkup}
     <span class="line-clamp-2 min-h-10 w-full text-xs font-medium leading-5 text-slate-100 sm:text-sm">${escapeHtml(item.name)}</span>
   </button>`;
 }
@@ -827,7 +834,9 @@ async function searchDailyItemCatalog(query) {
     const catalogMatches = BOSS_DROP_CATALOG.flatMap(group => group.items)
       .filter(item => item.name.replace(/\s/g, '').toLowerCase().includes(normalizedQuery));
     const matches = [...catalogMatches, ...apiMatches]
-      .filter((item, position, all) => all.findIndex(candidate => candidate.id === item.id) === position)
+      .filter((item, position, all) => all.findIndex(candidate =>
+        item.id != null && candidate.id != null ? candidate.id === item.id : candidate.name === item.name
+      ) === position)
       .slice(0, 12);
     if (itemCatalogQuery !== query || activeItemCatalogIndex === null) return;
 
@@ -843,14 +852,14 @@ async function searchDailyItemCatalog(query) {
   }
 }
 
-function selectDailyItem(index, itemId, encodedName) {
+function selectDailyItem(index, itemId, encodedName, encodedImage = '') {
   clearTimeout(dailyItemSearchTimers[index]);
   const name = decodeURIComponent(encodedName);
   dailyItemDraft[index] = {
     ...dailyItemDraft[index],
     name,
     itemId,
-    image: getMapleItemIconUrl(itemId)
+    image: itemId ? getMapleItemIconUrl(itemId) : decodeURIComponent(encodedImage)
   };
   closeDailyItemCatalog();
   renderDailyItemRows(dailyItemDraft);
