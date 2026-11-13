@@ -20,10 +20,34 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 넥슨 API 요청을 한꺼번에 보내면 일부 캐릭터 조회가 실패할 수 있어
+    // 호출 간격을 두고 429/일시 오류는 재시도합니다.
+    let lastNexonRequestAt = 0;
+    const fetchNexon = async (url) => {
+      let response;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const waitMs = Math.max(0, 350 - (Date.now() - lastNexonRequestAt));
+        if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+
+        lastNexonRequestAt = Date.now();
+        response = await fetch(url, {
+          headers: { 'x-nxopen-api-key': NEXON_API_KEY }
+        });
+
+        if (response.status !== 429 && response.status < 500) return response;
+        if (attempt < 3) {
+          const retryAfter = Number(response.headers.get('retry-after'));
+          const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter * 1000
+            : 500 * (attempt + 1);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+      }
+      return response;
+    };
+
     // 1. 검색한 캐릭터의 ocid 조회
-    const ocidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`, {
-      headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-    });
+    const ocidRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(name)}`);
     
     if (!ocidRes.ok) {
       return res.status(ocidRes.status).json({ error: '존재하지 않는 캐릭터이거나 넥슨 API 오류입니다.' });
@@ -35,9 +59,7 @@ export default async function handler(req, res) {
     let unionChampionNames = [];
     let unionChampionLookupSucceeded = false;
     try {
-      const unionRes = await fetch(`https://open.api.nexon.com/maplestory/v1/user/union-champion?ocid=${encodeURIComponent(ocid)}`, {
-        headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-      });
+      const unionRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/user/union-champion?ocid=${encodeURIComponent(ocid)}`);
       if (unionRes.ok) {
         unionChampionLookupSucceeded = true;
         const unionData = await unionRes.json();
@@ -71,35 +93,30 @@ export default async function handler(req, res) {
       unionChampionLookupSucceeded ? unionChampionNames : fallbackNames
     ));
 
-    // 4. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 병렬 조회 (최대 10개)
+    // 4. 후보 캐릭터들의 상세 정보(레벨, 직업, 이미지) 순차 조회 (최대 10개)
     const candidateNames = characterNames.slice(0, 10);
-    const detailsPromises = candidateNames.map(async (cName) => {
+    const results = [];
+    for (const cName of candidateNames) {
       try {
-        const cOcidRes = await fetch(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`, {
-          headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-        });
-        if (!cOcidRes.ok) return null;
+        const cOcidRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/id?character_name=${encodeURIComponent(cName)}`);
+        if (!cOcidRes.ok) continue;
         const { ocid: cOcid } = await cOcidRes.json();
 
-        const basicRes = await fetch(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${cOcid}`, {
-          headers: { 'x-nxopen-api-key': NEXON_API_KEY }
-        });
-        if (!basicRes.ok) return null;
+        const basicRes = await fetchNexon(`https://open.api.nexon.com/maplestory/v1/character/basic?ocid=${cOcid}`);
+        if (!basicRes.ok) continue;
         const basic = await basicRes.json();
 
-        return {
+        results.push({
           name: basic.character_name,
           world: basic.world_name,
           job: basic.character_class,
           level: basic.character_level,
           image: basic.character_image
-        };
+        });
       } catch (e) {
-        return null;
+        console.warn(`캐릭터 상세 조회 실패 (${cName}):`, e.message);
       }
-    });
-
-    const results = (await Promise.all(detailsPromises)).filter(Boolean);
+    }
 
     // 레벨 높은 순 정렬 후 상위 5개 추출 (또는 등록된 순서 유지)
     results.sort((a, b) => b.level - a.level);
