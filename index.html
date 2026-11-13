@@ -110,7 +110,10 @@
         <div class="p-4">
           <div class="flex justify-between items-center mb-3">
             <h3 id="selectedCharTitle" class="font-bold text-base text-amber-300">캐릭터 보스 설정</h3>
-            <span id="selectedCharMeso" class="text-sm font-semibold text-slate-300">소계: 0 메소</span>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-1.5 text-xs text-emerald-300"><input id="clearAllBosses" type="checkbox" onchange="setAllWeeklyBossesCleared(this.checked)" class="accent-emerald-500" /> 모두 클리어</label>
+              <span id="selectedCharMeso" class="text-sm font-semibold text-slate-300">소계: 0 메소</span>
+            </div>
           </div>
           <div id="bossListGrid" class="grid grid-cols-1 md:grid-cols-2 gap-2.5"></div>
         </div>
@@ -144,7 +147,7 @@
         <section class="mt-4 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
           <h3 id="sundayMapleTitle" class="text-sm font-bold text-violet-200">이번 주 썬데이 메이플</h3>
           <p id="sundayMapleSummary" class="mt-1 text-xs text-slate-300">일정을 불러오는 중...</p>
-          <img id="sundayMapleImage" class="hidden mt-2 w-full max-h-56 rounded-md object-contain bg-slate-900/50" alt="썬데이 메이플 이벤트 내용" />
+          <img id="sundayMapleImage" class="hidden mt-2 w-full max-h-[70vh] rounded-md object-contain bg-slate-900/50" alt="썬데이 메이플 이벤트 내용" />
           <a id="sundayMapleLink" class="mt-2 inline-block text-xs text-sky-300 underline" href="https://maplestory.nexon.com/News/Event" target="_blank" rel="noopener noreferrer">넥슨 공식 이벤트 공지 보기 ↗</a>
         </section>
 
