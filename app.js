@@ -77,6 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchAccount();
   });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activeItemCatalogIndex !== null) closeDailyItemCatalog();
+  });
 
 });
 
@@ -720,20 +723,19 @@ function renderDailyItemRows(items) {
     const imageUrl = /^https:\/\//i.test(item.image || '')
       ? item.image.replace('/KMS/latest/', `/KMS/${MAPLESTORY_DATA_VERSION}/`)
       : '';
-    return `<div class="rounded-md border border-slate-700 bg-slate-800/70 p-2">
-      <div class="flex gap-2">
-        <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-900 text-xl">
+    return `<div class="rounded-xl border border-slate-700 bg-slate-800/70 p-3 sm:p-4">
+      <div class="flex items-center gap-3">
+        <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 text-2xl sm:h-20 sm:w-20">
           <span id="dailyItemFallback${index}" class="${imageUrl ? 'hidden' : ''}">🎁</span>
           <img id="dailyItemImage${index}" src="${imageUrl}" alt="" class="${imageUrl ? '' : 'hidden'} h-full w-full object-contain" onerror="this.classList.add('hidden'); document.getElementById('dailyItemFallback${index}').classList.remove('hidden')" />
         </div>
-        <div class="min-w-0 flex-1 space-y-1">
-          <input value="${escapeHtml(item.name || '')}" oninput="updateDailyItem(${index}, 'name', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs" placeholder="아이템 검색 (예: 생명의 연마석)" />
-          <div id="dailyItemSearch${index}" class="mt-1 max-h-64 overflow-y-auto rounded-md">${item.name ? '' : renderBossDropCatalog(index)}</div>
-          <input value="${escapeHtml(item.image || '')}" oninput="updateDailyItem(${index}, 'image', this.value)" class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-[10px]" placeholder="아이템 이미지 URL (선택)" />
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-base font-bold text-slate-100 sm:text-lg">${escapeHtml(item.name || '아이템을 선택하세요')}</p>
+          <button type="button" onclick="openDailyItemCatalog(${index})" class="mt-2 rounded-lg border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20">${item.name ? '아이템 변경' : '아이템 고르기'}</button>
         </div>
-        <button onclick="removeDailyItem(${index})" class="self-start px-1 text-slate-400 hover:text-rose-300" aria-label="아이템 삭제">✕</button>
+        <button onclick="removeDailyItem(${index})" class="self-start rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-700 hover:text-rose-300" aria-label="아이템 삭제">✕</button>
       </div>
-      <input type="number" min="0" value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItem(${index}, 'price', this.value)" class="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs" placeholder="아이템 가격 (메소)" />
+      <input type="number" min="0" value="${escapeHtml(item.price ?? '')}" oninput="updateDailyItemPrice(${index}, this.value)" class="mt-3 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 sm:text-base" placeholder="아이템 가격 (메소)" />
     </div>`;
   }).join('') || '<p class="text-[11px] text-slate-500">+ 아이템을 눌러 드랍 아이템을 추가하세요.</p>';
 }
@@ -744,57 +746,70 @@ function escapeHtml(value) {
 
 let dailyItemDraft = [];
 const dailyItemSearchTimers = {};
+let activeItemCatalogIndex = null;
+let itemCatalogQuery = '';
 
-function renderBossDropCatalog(index) {
-  return `<div class="space-y-2 rounded-md border border-slate-700 bg-slate-900/70 p-2">
-    <p class="text-[10px] text-slate-400">아이콘을 눌러 아이템을 선택하거나 이름을 검색하세요.</p>
+function renderBossDropCatalog() {
+  return `<div class="space-y-6">
     ${BOSS_DROP_CATALOG.map(group => `<section>
-      <h4 class="mb-1 text-[10px] font-semibold text-violet-200">${group.group}</h4>
-      <div class="grid grid-cols-5 gap-1">${group.items.map(item => {
-        const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
-        return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center gap-0.5 rounded border border-slate-700 bg-slate-800 p-1 hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-400">
-          <span class="hidden h-8 w-8 items-center justify-center text-base">🎁</span>
-          <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-8 w-8 object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
-          <span class="w-full truncate text-[8px] leading-tight text-slate-300">${escapeHtml(item.name)}</span>
-        </button>`;
-      }).join('')}</div>
+      <h3 class="mb-3 text-base font-bold text-violet-200 sm:text-lg">${group.group}</h3>
+      <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9">${group.items.map(renderItemCatalogTile).join('')}</div>
     </section>`).join('')}
   </div>`;
+}
+
+function renderItemCatalogTile(item) {
+  const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
+  return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${activeItemCatalogIndex}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 p-3 text-center transition hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 sm:p-4">
+    <span class="hidden h-16 w-16 items-center justify-center text-3xl sm:h-20 sm:w-20">🎁</span>
+    <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-16 w-16 object-contain sm:h-20 sm:w-20" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
+    <span class="line-clamp-2 min-h-10 w-full text-xs font-medium leading-5 text-slate-100 sm:text-sm">${escapeHtml(item.name)}</span>
+  </button>`;
 }
 
 function addDailyItem() {
   dailyItemDraft.push({ name: '', image: '', price: '' });
   renderDailyItemRows(dailyItemDraft);
+  openDailyItemCatalog(dailyItemDraft.length - 1);
 }
 
-function updateDailyItem(index, field, value) {
+function updateDailyItemPrice(index, value) {
+  if (dailyItemDraft[index]) dailyItemDraft[index].price = value;
+}
+
+function openDailyItemCatalog(index) {
   if (!dailyItemDraft[index]) return;
-  dailyItemDraft[index][field] = value;
-  if (field === 'image') {
-    const image = document.getElementById(`dailyItemImage${index}`);
-    const safeUrl = /^https:\/\//i.test(value) ? value : '';
-    image.src = safeUrl;
-    image.classList.toggle('hidden', !safeUrl);
-    document.getElementById(`dailyItemFallback${index}`).classList.toggle('hidden', Boolean(safeUrl));
-  }
-  if (field === 'name') {
-    dailyItemDraft[index].itemId = null;
-    dailyItemDraft[index].image = '';
-    document.getElementById(`dailyItemImage${index}`).classList.add('hidden');
-    document.getElementById(`dailyItemFallback${index}`).classList.remove('hidden');
-    clearTimeout(dailyItemSearchTimers[index]);
-    const results = document.getElementById(`dailyItemSearch${index}`);
-    if (value.trim().length < 2) {
-      results.innerHTML = renderBossDropCatalog(index);
-      return;
-    }
-    results.innerHTML = '<span class="text-[10px] text-slate-400">한국어 아이템 이름과 아이콘을 검색 중...</span>';
-    dailyItemSearchTimers[index] = setTimeout(() => searchDailyItemCatalog(index, value.trim()), 300);
-  }
+  activeItemCatalogIndex = index;
+  itemCatalogQuery = '';
+  const search = document.getElementById('itemCatalogSearch');
+  search.value = '';
+  document.getElementById('itemCatalogResults').innerHTML = renderBossDropCatalog();
+  document.getElementById('itemCatalogModal').classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+  setTimeout(() => search.focus(), 0);
 }
 
-async function searchDailyItemCatalog(index, query) {
-  const results = document.getElementById(`dailyItemSearch${index}`);
+function closeDailyItemCatalog() {
+  clearTimeout(dailyItemSearchTimers.catalog);
+  document.getElementById('itemCatalogModal').classList.add('hidden');
+  document.body.classList.remove('overflow-hidden');
+  activeItemCatalogIndex = null;
+}
+
+function updateItemCatalogSearch(value) {
+  clearTimeout(dailyItemSearchTimers.catalog);
+  itemCatalogQuery = value.trim();
+  const results = document.getElementById('itemCatalogResults');
+  if (itemCatalogQuery.length < 2) {
+    results.innerHTML = renderBossDropCatalog();
+    return;
+  }
+  results.innerHTML = '<p class="py-10 text-center text-base text-slate-400">한국어 아이템 이름과 아이콘을 검색 중...</p>';
+  dailyItemSearchTimers.catalog = setTimeout(() => searchDailyItemCatalog(itemCatalogQuery), 300);
+}
+
+async function searchDailyItemCatalog(query) {
+  const results = document.getElementById('itemCatalogResults');
   if (!results) return;
   try {
     const url = `https://maplestory.io/api/KMS/${MAPLESTORY_DATA_VERSION}/item/list?searchFor=${encodeURIComponent(query)}&count=8`;
@@ -814,22 +829,17 @@ async function searchDailyItemCatalog(index, query) {
     const matches = [...catalogMatches, ...apiMatches]
       .filter((item, position, all) => all.findIndex(candidate => candidate.id === item.id) === position)
       .slice(0, 12);
-    if (dailyItemDraft[index]?.name?.trim() !== query || dailyItemDraft[index]?.itemId) return;
+    if (itemCatalogQuery !== query || activeItemCatalogIndex === null) return;
 
     if (!matches.length) {
-      results.innerHTML = '<span class="text-[10px] text-slate-400">검색 결과가 없어요. 아이템 이름을 직접 입력할 수 있습니다.</span>';
+      results.innerHTML = '<p class="py-10 text-center text-base text-slate-400">검색 결과가 없어요. 이름을 다시 확인해 주세요.</p>';
       return;
     }
-    results.innerHTML = `<div class="grid grid-cols-4 gap-1.5">${matches.map(item => {
-      const encodedName = encodeURIComponent(item.name).replace(/'/g, '%27');
-      return `<button type="button" title="${escapeHtml(item.name)} 선택" onclick="selectDailyItem(${index}, ${item.id}, '${encodedName}')" class="flex min-w-0 flex-col items-center gap-1 rounded-md border border-slate-600 bg-slate-800 p-1.5 text-center hover:border-amber-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400">
-        <span class="hidden h-10 w-10 items-center justify-center text-lg">🎁</span>
-        <img src="${getMapleItemIconUrl(item.id)}" alt="${escapeHtml(item.name)} 아이콘" loading="lazy" class="h-10 w-10 cursor-pointer object-contain" onerror="this.classList.add('hidden'); this.previousElementSibling.classList.remove('hidden'); this.previousElementSibling.classList.add('flex')" />
-        <span class="w-full truncate text-[10px] leading-tight text-slate-200">${escapeHtml(item.name)}</span>
-      </button>`;
-    }).join('')}</div><p class="mt-1 text-[9px] text-slate-500">아이콘을 누르면 한국어 아이템 이름과 이미지가 입력돼요.</p>`;
+    results.innerHTML = `<div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-9">${matches.map(renderItemCatalogTile).join('')}</div>`;
   } catch (error) {
-    results.innerHTML = '<span class="text-[10px] text-slate-400">아이템 아이콘 검색을 불러오지 못했어요.</span>';
+    if (itemCatalogQuery === query && activeItemCatalogIndex !== null) {
+      results.innerHTML = '<p class="py-10 text-center text-base text-rose-300">아이템 검색을 불러오지 못했어요. 잠시 후 다시 검색해 주세요.</p>';
+    }
   }
 }
 
@@ -842,10 +852,13 @@ function selectDailyItem(index, itemId, encodedName) {
     itemId,
     image: getMapleItemIconUrl(itemId)
   };
+  closeDailyItemCatalog();
   renderDailyItemRows(dailyItemDraft);
 }
 
 function removeDailyItem(index) {
+  clearTimeout(dailyItemSearchTimers.catalog);
+  if (activeItemCatalogIndex === index) closeDailyItemCatalog();
   dailyItemDraft.splice(index, 1);
   renderDailyItemRows(dailyItemDraft);
 }
