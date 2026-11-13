@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>메이플 계정 통합 코디 & 주간 보스 수익 계산기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+  <!-- 상단 네비게이션 -->
+  <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">🍁</span>
+        <h1 class="font-bold text-lg text-amber-400">메이플 통합 코디 & 주간보스</h1>
+      </div>
+
+      <!-- 캐릭터/친구 검색창 -->
+      <div class="flex flex-1 max-w-md gap-2">
+        <input id="searchInput" type="text" placeholder="본캐 또는 부캐 닉네임 검색..."
+          class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-amber-400" />
+        <button onclick="searchAccount()"
+          class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-sm shrink-0">
+          검색
+        </button>
+      </div>
+
+      <!-- 로그인 / 회원가입 상태 영역 -->
+      <div id="authArea" class="flex items-center gap-2 text-sm">
+        <button onclick="openAuthModal('login')" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg">로그인</button>
+        <button onclick="openAuthModal('signup')" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg font-medium">초간단 가입</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 컨테이너 -->
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+    
+    <!-- 좌측 메인 콘텐츠 (9칸) -->
+    <div class="lg:col-span-9 space-y-6">
+      
+      <!-- 조회 상태 배너 -->
+      <div id="statusBanner" class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p id="viewingTitle" class="font-semibold text-base text-slate-200">캐릭터를 검색하거나 로그인하여 보스 수익을 계산해보세요.</p>
+          <p id="viewingSub" class="text-xs text-slate-400 mt-0.5">계정 내 어떤 부캐릭터를 검색해도 상위 5개 캐릭터가 자동 매칭됩니다.</p>
+        </div>
+        <button id="saveBtn" onclick="saveMySettings()" class="hidden bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg text-sm shadow">
+          💾 내 보스 설정 DB 저장
+        </button>
+      </div>
+
+      <!-- 상위 5개 캐릭터 코디 카드 영역 -->
+      <section>
+        <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">계정 레벨 TOP 5 캐릭터</h2>
+        <div id="top5Container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <!-- JS로 렌더링 -->
+          <div class="col-span-full bg-slate-800/40 border border-dashed border-slate-700 rounded-xl py-12 text-center text-slate-500 text-sm">
+            상단 검색창에 닉네임을 입력하면 상위 5개 캐릭터 코디가 표시됩니다.
+          </div>
+        </div>
+      </section>
+
+      <!-- 주간 보스 수익 요약 바 -->
+      <section class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-6">
+          <div>
+            <span class="text-xs text-slate-400 block">주간 총 결정석 수익 (1/N 반영)</span>
+            <span id="totalMeso" class="text-2xl font-extrabold text-amber-400">0 메소</span>
+          </div>
+          <div class="h-8 w-px bg-slate-700"></div>
+          <div>
+            <span class="text-xs text-slate-400 block">계정 주간 결정석 한도</span>
+            <span id="crystalCounter" class="text-xl font-bold text-emerald-400">0 / 90개</span>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400">
+          * 캐릭터별 12개 제한 폐지 / 계정당 주간 최대 90개 적용
+        </div>
+      </section>
+
+      <!-- 캐릭터 선택 탭 + 보스 리스트 -->
+      <section id="bossSection" class="hidden bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+        <!-- 5캐릭터 전환 탭 -->
+        <div id="charTabs" class="flex border-b border-slate-700 bg-slate-850 overflow-x-auto"></div>
+        
+        <!-- 선택된 캐릭터의 보스 체크리스트 -->
+        <div class="p-4">
+          <div class="flex justify-between items-center mb-3">
+            <h3 id="selectedCharTitle" class="font-bold text-base text-amber-300">캐릭터 보스 설정</h3>
+            <span id="selectedCharMeso" class="text-sm font-semibold text-slate-300">소계: 0 메소</span>
+          </div>
+          <div id="bossListGrid" class="grid grid-cols-1 md:grid-cols-2 gap-2.5"></div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 우측 사이드바: 이번 달 미니 캘린더 (3칸) -->
+    <aside class="lg:col-span-3 space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 sticky top-20">
+        <div class="flex items-center justify-between mb-3">
+          <h2 id="calendarMonthTitle" class="font-bold text-base text-slate-100">2026년 11월</h2>
+          <span class="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">메이플 일정</span>
+        </div>
+
+        <!-- 요일 헤더 -->
+        <div class="grid grid-cols-7 text-center text-xs font-semibold mb-1.5">
+          <span class="text-rose-400">일</span>
+          <span class="text-slate-400">월</span>
+          <span class="text-slate-400">화</span>
+          <span class="text-slate-400">수</span>
+          <span class="text-sky-400">목</span>
+          <span class="text-slate-400">금</span>
+          <span class="text-slate-400">토</span>
+        </div>
+
+        <!-- 날짜 그리드 -->
+        <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-xs"></div>
+
+        <!-- 범례 -->
+        <div class="mt-4 pt-3 border-t border-slate-700 space-y-1.5 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-sm bg-rose-500/30 border border-rose-500 inline-block"></span>
+            <span class="text-rose-300 font-medium">일요일: 썬데이 메이플</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-sm bg-sky-500/30 border border-sky-500 inline-block"></span>
+            <span class="text-sky-300 font-medium">목요일: 주간 보스 · 결정석 90개 초기화</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- 초간단 회원가입/로그인 모달 -->
+  <div id="authModal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-700 rounded-xl max-w-sm w-full p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 id="modalTitle" class="text-lg font-bold text-amber-400">로그인</h3>
+        <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">아이디</label>
+          <input id="authUsername" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm" placeholder="사용할 아이디 입력" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">비밀번호</label>
+          <input id="authPassword" type="password" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm" placeholder="비밀번호 입력" />
+        </div>
+        <div id="signupCharField" class="hidden">
+          <label class="text-xs text-slate-400 block mb-1">대표 캐릭터 닉네임 (부캐도 가능)</label>
+          <input id="authMainChar" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm" placeholder="메이플 닉네임 입력" />
+        </div>
+      </div>
+      <button id="authSubmitBtn" onclick="submitAuth()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-2 rounded-lg text-sm">
+        확인
+      </button>
+    </div>
+  </div>
+
+  <script src="bossData.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
